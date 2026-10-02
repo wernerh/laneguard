@@ -41,6 +41,9 @@ import laneconfig  # noqa: E402
 PASS, WARN, FAIL, SKIP = "PASS", "WARN", "FAIL", "SKIP"
 GUARD_CHECK_CONTEXT = "laneguard-guard / check"
 REVIEW_CONTEXT = "laneguard-review"
+# The GitHub App id of GitHub Actions. A required check pinned to it can only be satisfied by a
+# check run from Actions, never by a commit status that another app (such as the lane's own) posts.
+GITHUB_ACTIONS_APP_ID = 15368
 SAMPLE_PROTECTED = [
     ".laneguard/guard/check.py", ".laneguard/config.yaml", ".laneguard/plugin.lock",
     ".laneguard/scaffold.version", ".github/workflows/laneguard-guard.yml", ".github/CODEOWNERS",
@@ -106,9 +109,19 @@ def analyze_rules(rules: dict, cfg: dict) -> list:
     pr_required = code_owner = False
     approvals = 0
     contexts: set = set()
+    # context -> integration/app id the check is pinned to (None when unpinned)
+    check_apps: dict = {}
     force_blocked = deletion_blocked = False
     bypass_apps = False
     bypass_other = False
+    bypass_unknown = False  # an active ruleset whose bypass_actors we could not see
+
+    def note_check(context, app_id):
+        if context is None:
+            return
+        contexts.add(context)
+        # keep the pinned id if any source pins it
+        check_apps[context] = check_apps.get(context) or app_id
 
     for rule in eff or []:
         t, p = rule.get("type"), rule.get("parameters") or {}
@@ -118,7 +131,7 @@ def analyze_rules(rules: dict, cfg: dict) -> list:
             approvals = max(approvals, int(p.get("required_approving_review_count") or 0))
         elif t == "required_status_checks":
             for c in p.get("required_status_checks", []):
-                contexts.add(c.get("context"))
+                note_check(c.get("context"), c.get("integration_id"))
         elif t == "non_fast_forward":
             force_blocked = True
         elif t == "deletion":
@@ -135,8 +148,10 @@ def analyze_rules(rules: dict, cfg: dict) -> list:
             if allow.get("users") or allow.get("teams"):
                 bypass_other = True
         rsc = classic.get("required_status_checks") or {}
-        contexts.update(rsc.get("contexts") or [])
-        contexts.update(c.get("context") for c in rsc.get("checks") or [])
+        for ctx in rsc.get("contexts") or []:
+            note_check(ctx, None)
+        for c in rsc.get("checks") or []:
+            note_check(c.get("context"), c.get("app_id"))
         if (classic.get("allow_force_pushes") or {}).get("enabled") is False:
             force_blocked = True
         if (classic.get("allow_deletions") or {}).get("enabled") is False:
@@ -144,11 +159,28 @@ def analyze_rules(rules: dict, cfg: dict) -> list:
     for rs in rulesets or []:
         if rs.get("enforcement") not in (None, "active"):
             continue
+        if "bypass_actors" not in rs:
+            # The rulesets *list* endpoint omits bypass_actors; only /rulesets/{id} returns them.
+            # Without that data we cannot say "no bypass actors", so we must not report PASS.
+            bypass_unknown = True
+            continue
         for actor in rs.get("bypass_actors") or []:
             if actor.get("actor_type") == "Integration":
                 bypass_apps = True
             else:
                 bypass_other = True
+
+    guard_required = GUARD_CHECK_CONTEXT in contexts
+    guard_pinned = check_apps.get(GUARD_CHECK_CONTEXT) == GITHUB_ACTIONS_APP_ID
+    if not guard_required:
+        req_status, req_detail = FAIL, f"'{GUARD_CHECK_CONTEXT}' is not a required status check, so check.py can be skipped"
+    elif not guard_pinned:
+        req_status, req_detail = FAIL, (
+            f"'{GUARD_CHECK_CONTEXT}' is required but not pinned to GitHub Actions (integration_id/app_id "
+            f"{GITHUB_ACTIONS_APP_ID}), so a commit status with that context posted by any app, including the "
+            f"lane's own, would satisfy it without check.py running")
+    else:
+        req_status, req_detail = PASS, f"'{GUARD_CHECK_CONTEXT}' is a required check pinned to GitHub Actions"
 
     autonomous = any(l.get("mode") == "autonomous" for l in cfg.get("lanes", {}).values())
     out = [
@@ -158,9 +190,7 @@ def analyze_rules(rules: dict, cfg: dict) -> list:
         Check("branch.codeowner-review", PASS if code_owner and approvals >= 1 else FAIL,
               "CODEOWNERS review is required" if code_owner and approvals >= 1 else
               "CODEOWNERS review with at least one approval is not required, so protected paths are not owner-gated"),
-        Check("branch.required-checks", PASS if GUARD_CHECK_CONTEXT in contexts else FAIL,
-              f"'{GUARD_CHECK_CONTEXT}' is a required check" if GUARD_CHECK_CONTEXT in contexts else
-              f"'{GUARD_CHECK_CONTEXT}' is not a required status check, so check.py can be skipped"),
+        Check("branch.required-checks", req_status, req_detail),
         Check("branch.force-push", PASS if force_blocked else FAIL,
               "force-pushes are blocked" if force_blocked else "force-pushes to the default branch are not blocked"),
         Check("branch.deletion", PASS if deletion_blocked else WARN,
@@ -172,10 +202,16 @@ def analyze_rules(rules: dict, cfg: dict) -> list:
                          f"'{REVIEW_CONTEXT}' is a required check" if REVIEW_CONTEXT in contexts else
                          f"a lane is in autonomous mode but '{REVIEW_CONTEXT}' is not a required status check, "
                          f"so it could merge without the independent review"))
-    out.append(Check("branch.bypass", FAIL if bypass_apps else WARN if bypass_other else PASS,
-                     "a GitHub App is allowed to bypass branch protection: the lane's bot must not be" if bypass_apps else
-                     "bypass actors are configured; confirm the lane's bot identity is not among them" if bypass_other else
-                     "no bypass actors", critical=bypass_apps))
+    if bypass_apps:
+        out.append(Check("branch.bypass", FAIL, "a GitHub App is allowed to bypass branch protection: the lane's bot must not be"))
+    elif bypass_other:
+        out.append(Check("branch.bypass", WARN, "bypass actors are configured; confirm the lane's bot identity is not among them",
+                         critical=False))
+    elif bypass_unknown:
+        out.append(Check("branch.bypass", SKIP, "an active ruleset was listed without its bypass actors; "
+                         "re-run with a token that can read /repos/{repo}/rulesets/{id} to verify no app can bypass"))
+    else:
+        out.append(Check("branch.bypass", PASS, "no bypass actors", critical=False))
     return out
 
 
@@ -341,6 +377,13 @@ class Doctor:
                 notes.append(f"{name} grants contents: write to the workflow token")
         if guard and "check.py" not in guard:
             problems.append("laneguard-guard.yml does not run check.py")
+        if guard:
+            # The required-check context is the job's literal `name:`. If it drifts, the required check
+            # becomes unsatisfiable (fail-closed, but every PR is stuck) and doctor's rules check would still PASS.
+            names = re.findall(r"^\s+name:\s*['\"]?([^'\"\n]+?)['\"]?\s*$", guard, re.M)
+            if GUARD_CHECK_CONTEXT not in [n.strip() for n in names]:
+                problems.append(f"laneguard-guard.yml has no job named '{GUARD_CHECK_CONTEXT}', so the required check "
+                                "of that name can never be satisfied")
         if guard and not re.search(r"\bpull_request\b", guard):
             problems.append("laneguard-guard.yml does not trigger on pull_request")
         run_max = self.cfg["limits"]["run_max_minutes"]

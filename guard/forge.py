@@ -465,12 +465,20 @@ class Forge:
         eff = self._get_soft(f"/repos/{self.repo}/rules/branches/{branch}")
         classic = self._get_soft(f"/repos/{self.repo}/branches/{branch}/protection")
         rulesets = self._get_soft(f"/repos/{self.repo}/rulesets")
+        # The list endpoint omits bypass_actors; fetch each ruleset by id so doctor can see them.
+        # A ruleset we cannot fetch keeps its list shape (no bypass_actors key), which doctor reports as SKIP.
+        detailed = None
+        if rulesets is not None and isinstance(rulesets.data, list):
+            detailed = []
+            for rs in rulesets.data:
+                full = self._get_soft(f"/repos/{self.repo}/rulesets/{rs.get('id')}") if rs.get("id") is not None else None
+                detailed.append(full.data if full is not None and isinstance(full.data, dict) else rs)
         return {
             "branch": branch, "default_branch": repo.get("default_branch"),
             "permissions": repo.get("permissions"), "visibility": repo.get("visibility"),
             "effective_rules": eff.data if eff is not None else None,
             "classic_protection": classic.data if classic is not None else None,
-            "rulesets": rulesets.data if rulesets is not None else None,
+            "rulesets": detailed if rulesets is not None else None,
         }
 
     # ------------------------------------------------------------------ writes
