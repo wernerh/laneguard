@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="t">
+  <title id="t">Laneguard</title>
+  <g transform="translate(0 0)">
+    <path d="M64 8 L112 24 V58 C112 88 92 108 64 121 C36 108 16 88 16 58 V24 Z"
+          fill="none" stroke="#6366F1" stroke-width="8" stroke-linejoin="round"/>
+    <g stroke="#10B981" stroke-width="7" stroke-linecap="round" fill="none">
+      <path d="M46 32 V50 M64 32 V50 M82 32 V50"/>
+      <path d="M46 74 V94 M64 74 V94 M82 74 V94" stroke-dasharray="0.1 11"/>
+    </g>
+    <rect x="32" y="56" width="64" height="12" rx="6" fill="#6366F1"/>
+  </g>
+</svg>
