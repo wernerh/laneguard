@@ -1,9 +1,13 @@
 ---
-description: Open a PR patching scaffold files to a newer engine version (not built yet in the 0.1 preview)
+description: Open an owner-reviewed PR that patches engine-managed scaffold files to a newer engine version
+argument-hint: "[--engine-sha SHA] [--overwrite-conflicts]"
 ---
 
-`/laneguard:migrate` is planned but not built in this preview. There is no scaffold version to migrate from yet.
+Migrate the scaffold to the installed engine version. Arguments: $ARGUMENTS
 
-When built, it opens a PR that patches scaffold files to a newer engine version, with a changelog. It touches protected paths, so it is never auto-merged and the owner always reviews it.
+This writes protected paths, so it is an owner action: confirm the person is an owner (`python3 .laneguard/guard/forge.py whoami` and `permission`), and refuse in scheduled or unattended runs.
 
-Do not edit `.laneguard/plugin.lock`, `.laneguard/scaffold.version` or any scaffold file. Tell the owner this and stop.
+1. Resolve the new engine SHA (the argument, else `git -C "${CLAUDE_PLUGIN_ROOT}" rev-parse HEAD`). It must be a full 40-character SHA.
+2. Dry run: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/migrate.py" --engine-sha <sha> --plugin-root "${CLAUDE_PLUGIN_ROOT}"`. Show the changelog. Files the project edited since init are conflicts and are left alone; a locally edited guard script is serious, so say so plainly.
+3. After the owner agrees, create a branch `laneguard-migrate/<version>`, re-run with `--apply`, run `python3 .laneguard/guard/doctor.py --offline`, commit, push the branch and open a PR with `forge.py write pr`, using the changelog as the body.
+4. Never merge it. The checker requires an owner for these paths and branch protection requires owner review.

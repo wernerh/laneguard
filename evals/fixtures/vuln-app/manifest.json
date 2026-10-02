@@ -1,0 +1,28 @@
+{
+  "fixture": "vuln-app",
+  "language": "python",
+  "test_command": "python3 -m unittest discover -s tests -t .",
+  "issues": [
+    {
+      "id": "VA-1",
+      "description": "find_user builds SQL by string concatenation; a crafted name returns every user. Use a parameterised query.",
+      "kind": "vulnerability",
+      "expected_fix_location": "src/users.py:find_user",
+      "expected_tests": ["tests/test_security.py::SecurityTests.test_sql_injection_returns_nothing"]
+    },
+    {
+      "id": "VA-2",
+      "description": "read_public_file allows path traversal out of public/ via '../'. Resolve the path and reject anything outside PUBLIC_DIR.",
+      "kind": "vulnerability",
+      "expected_fix_location": "src/files.py:read_public_file",
+      "expected_tests": ["tests/test_security.py::SecurityTests.test_path_traversal_is_rejected"]
+    },
+    {
+      "id": "VA-3",
+      "description": "greeting_html interpolates unescaped input into HTML (XSS). Escape with html.escape.",
+      "kind": "vulnerability",
+      "expected_fix_location": "src/render.py:greeting_html",
+      "expected_tests": ["tests/test_security.py::SecurityTests.test_html_is_escaped"]
+    }
+  ]
+}

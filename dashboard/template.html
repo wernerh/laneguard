@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta name="color-scheme" content="light dark">
+<title>{{TITLE}}</title>
+<style>
+:root{--bg:#fff;--fg:#1b1f24;--muted:#57606a;--card:#f6f8fa;--line:#d0d7de;--ok:#1a7f37;--bad:#b42318;--warn:#8a4b00;--info:#0550ae;--link:#0550ae}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9da7b3;--card:#161b22;--line:#30363d;--ok:#56d364;--bad:#ff7b72;--warn:#e3b341;--info:#79c0ff;--link:#79c0ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:.2em 0}h2{font-size:1.2rem;margin:0 0 .4em}
+a{color:var(--link)}
+.skip{position:absolute;left:-999px}.skip:focus{left:8px;top:8px;background:var(--card);padding:6px;z-index:2}
+.lane{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin:16px 0}
+.chips{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.counts{list-style:none;display:flex;flex-wrap:wrap;gap:8px 16px;padding:0;margin:.6em 0}
+.badge{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:0 .6em;font-size:.85rem;font-weight:600;color:var(--muted)}
+.badge.merged,.badge.ok{color:var(--ok)}.badge.failed,.badge.aborted,.badge.paused{color:var(--bad)}
+.badge.pr_opened,.badge.proposed{color:var(--info)}.badge.refused{color:var(--warn)}
+.warn{color:var(--bad);font-weight:600}.hint,.empty,time,caption{color:var(--muted)}
+.hint{color:var(--warn)}
+meter{width:100%;max-width:420px;height:1rem}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow-x:auto}
+caption{text-align:left;padding:.4em 0}
+th,td{border-top:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.note{max-width:34em;overflow-wrap:anywhere}code{overflow-wrap:anywhere}
+label{margin-right:8px}select{font:inherit;padding:4px;background:var(--card);color:var(--fg);border:1px solid var(--line)}
+:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+</style>
+</head>
+<body>
+<a class="skip" href="#lanes">Skip to lanes</a>
+<main>
+<header>
+<h1>{{TITLE}}</h1>
+<p class="hint" style="color:var(--muted)">Generated <time id="gen" datetime="{{GENERATED}}">{{GENERATED}}</time></p>
+</header>
+<section aria-labelledby="sum-h"><h2 id="sum-h">Overview</h2>{{SUMMARY}}
+<p id="filter-wrap" hidden><label for="lane-filter">Show lane</label><select id="lane-filter"><option value="">All lanes</option></select></p>
+</section>
+<div id="lanes">{{LANES}}</div>
+</main>
+<script type="application/json" id="data">{{DATA_JSON}}</script>
+<script>
+(function(){
+  try{
+    var data=JSON.parse(document.getElementById("data").textContent);
+    var gen=document.getElementById("gen");
+    var d=new Date(data.generated_at);
+    if(!isNaN(d)){gen.textContent=d.toLocaleString()+" (local time)";}
+    var sel=document.getElementById("lane-filter");
+    var lanes=document.querySelectorAll(".lane");
+    if(data.lanes.length>1){
+      data.lanes.forEach(function(l){var o=document.createElement("option");o.value=l.name;o.textContent=l.name;sel.appendChild(o);});
+      document.getElementById("filter-wrap").hidden=false;
+      sel.addEventListener("change",function(){
+        lanes.forEach(function(el){el.hidden=!!sel.value&&el.getAttribute("data-lane")!==sel.value;});
+      });
+    }
+  }catch(err){}
+})();
+</script>
+</body>
+</html>

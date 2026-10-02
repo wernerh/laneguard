@@ -1,0 +1,28 @@
+{
+  "fixture": "node-bugs",
+  "language": "javascript",
+  "test_command": "npm test",
+  "issues": [
+    {
+      "id": "JS-1",
+      "description": "total() sums floats; 0.1 + 0.2 is not 0.3. Totals must be computed in integer cents.",
+      "kind": "bug",
+      "expected_fix_location": "src/cart.js:total",
+      "expected_tests": ["test/cart.test.js::total is exact to the cent"]
+    },
+    {
+      "id": "JS-2",
+      "description": "firstN(list, n) returns n + 1 items (off-by-one in slice).",
+      "kind": "bug",
+      "expected_fix_location": "src/cart.js:firstN",
+      "expected_tests": ["test/cart.test.js::firstN returns exactly n items"]
+    },
+    {
+      "id": "JS-3",
+      "description": "hasItem uses loose equality, so the string '0' matches id 0.",
+      "kind": "bug",
+      "expected_fix_location": "src/cart.js:hasItem",
+      "expected_tests": ["test/cart.test.js::hasItem does not coerce ids"]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@{{CHECKOUT_SHA}}
+      - name: lint
+        run: {{VALIDATION_LINT_OR_TRUE}}
+      - name: test
+        run: {{VALIDATION_TEST_OR_TRUE}}
+      - name: build
+        run: {{VALIDATION_BUILD_OR_TRUE}}

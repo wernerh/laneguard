@@ -1,12 +1,12 @@
 ---
-description: Pause all lanes, or one lane, by creating the pause flag
-argument-hint: "[lane]"
+description: Pause all lanes, or one lane
+argument-hint: "[lane] [reason]"
 ---
 
-Pause Laneguard. Argument (optional lane name): $ARGUMENTS
+Pause Laneguard. Arguments (optional lane, then reason): $ARGUMENTS
 
-1. If a lane name is given, create `.laneguard/PAUSED.<lane>`. Otherwise create `.laneguard/PAUSED`. Create the `.laneguard/` directory if needed. Put the current reason and date in the file, taking the date from `date -u`, not from memory.
-2. Do not commit or push. Tell the owner to commit the flag to the default branch for scheduled lanes to see it, and say that every lane run checks for it first.
-3. Confirm which flag now exists.
+Run `python3 .laneguard/guard/history.py pause [--lane <lane>] --reason "<reason>" --by "<who>"`. This writes the flag (`PAUSED` for all lanes, `PAUSED.<lane>` for one) to the `laneguard-data` branch, which every lane run checks first through `history.py pause-check`. No commit to the default branch is needed.
 
-Pausing is always safe and needs no approval. Removing a flag is a separate, owner-only action: see `/laneguard:resume`.
+If `history.py` cannot reach the remote, say so and do not claim the pause took effect. Confirm by running `history.py status --no-trip` and showing the paused state.
+
+Pausing is always safe and needs no approval. Removing a flag is owner-only: see `/laneguard:resume`.

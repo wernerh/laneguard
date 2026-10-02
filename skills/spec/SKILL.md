@@ -24,7 +24,7 @@ Stage 2 of 3. Input: an approved `docs/BRIEF.md`. Output: `PRODUCT.md`, `ARCHITE
 
 ## Approval
 
-Explicit `/approve spec` from a login in `owners:`, verified through `.laneguard/guard/forge.py` when it exists. In the preview, in-session owner confirmation counts and is recorded at the end of `ARCHITECTURE.md` as `Approved by <login> on <date> (in-session, preview)`. Without approval, stop. Do not start the plan stage.
+Explicit `/approve spec` from a login in `owners:`. Once the project is initialised, post the artifact on a tracking issue and verify with `python3 .laneguard/guard/forge.py approvals --target issue --number N --gate spec` (listed owner, real person, comment never edited). Before init there is no repository config or guard to verify against, so the owner confirming in this interactive session counts; record it at the end of `ARCHITECTURE.md` as `Approved by <login> on <date> (in-session, unverified)`. Without approval, stop. Do not start the plan stage.
 
 ## Rules
 

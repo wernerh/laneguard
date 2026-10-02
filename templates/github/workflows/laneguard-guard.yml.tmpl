@@ -1,0 +1,41 @@
+# Laneguard guard. Required status check: "laneguard-guard / check". Protected: owners only.
+# It runs the checker copied from the BASE branch, so a pull request cannot weaken the rules it is judged by.
+name: laneguard-guard
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+jobs:
+  check:
+    name: laneguard-guard / check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@{{CHECKOUT_SHA}}
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Trusted checker from the base commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/trusted"
+          git archive "$BASE_SHA" .laneguard/guard | tar -x -C "$RUNNER_TEMP/trusted"
+      - name: Run check.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          python3 "$RUNNER_TEMP/trusted/.laneguard/guard/check.py" \
+            --repo . --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --author "$AUTHOR" --author-type "$AUTHOR_TYPE" \
+            --labels "$LABELS" --pr-body-file "$RUNNER_TEMP/pr-body.txt"

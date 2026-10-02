@@ -10,7 +10,7 @@ Stage 1 of 3 in the design pipeline (intake, spec, plan). The output is `docs/BR
 ## Preconditions
 
 - You are in the target repository.
-- `.laneguard/config.yaml` may not exist yet (`/laneguard:init` is not built in the preview). If it is missing, take the owner's GitHub login from `gh api user --jq .login` and say which login you are treating as the owner.
+- `.laneguard/config.yaml` may not exist yet (it does not exist until `/laneguard:init` has run). If it is missing, take the owner's GitHub login from `gh api user --jq .login` and say which login you are treating as the owner.
 - This stage is interactive. If you are running unattended (a scheduled run, no owner present), stop and report that intake needs the owner.
 
 ## Process
@@ -28,7 +28,7 @@ Stage 1 of 3 in the design pipeline (intake, spec, plan). The output is `docs/BR
 
 ## Approval
 
-Approval means an explicit `/approve brief` from a login listed in `owners:`. When `.laneguard/guard/forge.py` exists, verify it through that adapter. In the preview, where it does not exist, the owner confirming in this interactive session counts, and you record it at the end of the brief as `Approved by <login> on <date> (in-session, preview)`. Without approval, stop. Do not start the spec stage.
+Approval means an explicit `/approve brief` from a login listed in `owners:`. When the project is initialised, verify it with `python3 .laneguard/guard/forge.py approvals --target issue --number N --gate brief`. Before init there is no guard to verify against, so the owner confirming in this interactive session counts, and you record it at the end of the brief as `Approved by <login> on <date> (in-session, unverified)`. Without approval, stop. Do not start the spec stage.
 
 ## Rules
 

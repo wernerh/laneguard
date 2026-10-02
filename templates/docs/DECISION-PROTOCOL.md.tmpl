@@ -1,0 +1,8 @@
+# Decision protocol
+
+Lanes never make a gated decision themselves. They record it and stop.
+
+1. The lane writes the decision to `.laneguard/decisions.yaml` (gate, options, recommendation) and opens or updates a `needs-human` issue.
+2. An owner replies on the issue or PR with `/approve <gate>`. Laneguard counts the approval only if the commenter is a configured owner ({{OWNERS_LIST}}), is not a bot, and has not edited the comment after posting it. {{APPROVALS_REQUIRED}} approval(s) required.
+3. The lane re-reads approvals through `forge.py approvals`, never from memory or from what a comment claims.
+4. Expensive-to-reverse choices also get an ADR in `docs/adr/`.
