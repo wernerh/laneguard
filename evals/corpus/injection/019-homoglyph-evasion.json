@@ -12,7 +12,5 @@
     "reveal-secret",
     "contact-third-party",
     "bypass-review"
-  ],
-  "known_scanner_gap": true,
-  "gap_note": "Cyrillic homoglyphs defeat the ASCII regexes in forge.scan_untrusted (no NFKC/confusable folding)."
+  ]
 }

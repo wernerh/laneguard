@@ -8,11 +8,18 @@
 <p align="center"><b>Autonomous dev lanes with a leash.</b></p>
 
 <p align="center">
+  <a href="https://github.com/wernerh/laneguard/actions/workflows/ci.yml"><img src="https://github.com/wernerh/laneguard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.10%E2%80%933.13-blue.svg" alt="Python 3.10-3.13">
+  <img src="https://img.shields.io/badge/status-pre--alpha-orange.svg" alt="Status: pre-alpha">
+</p>
+
+<p align="center">
   A Claude Code plugin that turns an idea into an approved design, then runs scheduled, gated agents ("lanes") that open pull requests for you, while enforcing the limits <i>outside the prompt</i>.
 </p>
 
 > **Status: pre-alpha. The design is complete and the engine scripts exist; lane runs have not been exercised end to end against live GitHub.**
-> What exists today: the [design spec](docs/design-spec.md), ten [subagent definitions](agents/), seven [skills](skills/), nine [commands](commands/), the plugin and marketplace manifests, the logo, and the engine scripts: the guard scripts in [`guard/`](guard/) (`lock.py`, `check.py`, `forge.py`, `history.py`, `allowlist.py`, `doctor.py`), the scaffold generator [`scripts/init.py`](scripts/init.py) and the [`templates/`](templates/) it renders. Their unit tests pass. Wiring the slash commands to those scripts is still being finished, and nothing has been run against a live GitHub repository as part of a full lane run, so the guarantees below are tested against fakes and local git, not proven in use. Usage examples below show the intended behaviour and are marked as such. Do not run this against a repository you care about yet. See the [roadmap](#roadmap).
+> What exists today: the [design spec](docs/design-spec.md), ten [subagent definitions](agents/), seven [skills](skills/), nine [commands](commands/), the plugin and marketplace manifests, the logo, and the engine scripts: the guard scripts in [`guard/`](guard/) (`lock.py`, `check.py`, `forge.py`, `history.py`, `allowlist.py`, `doctor.py`), the scaffold generator [`scripts/init.py`](scripts/init.py) and the [`templates/`](templates/) it renders. Also `scripts/migrate.py`, `scripts/eject.py`, the static [`dashboard/`](dashboard/) and the offline [`evals/`](evals/). Their unit tests pass, and the slash commands are wired to these scripts. Nothing has been run against a live GitHub repository as part of a full lane run, so the guarantees below are tested against fakes and local git, not proven in use. Usage examples below show the intended behaviour and are marked as such. Do not run this against a repository you care about yet. See the [roadmap](#roadmap).
 
 ---
 
@@ -21,9 +28,10 @@
 - [Why Laneguard](#why-laneguard)
 - [How it works](#how-it-works)
 - [Install the preview](#install-the-preview)
-- [Quick start (planned)](#quick-start-planned)
+- [Quick start](#quick-start)
 - [Usage examples (planned)](#usage-examples-planned)
 - [Configuration](#configuration)
+- [FAQ](#faq)
 - [Agents](#agents)
 - [Security](#security)
 - [Documentation](#documentation)
@@ -108,8 +116,8 @@ The engine scripts exist and their tests pass, but the guarantees in [Security](
 
 ```text
 # 1. Add the marketplace and install the plugin
-/plugin marketplace add <owner>/laneguard
-/plugin install laneguard
+/plugin marketplace add wernerh/laneguard
+/plugin install laneguard@laneguard
 
 # 2. In an empty or existing repo: scaffold, in the safest mode
 /laneguard:init --profile minimal        # one dev lane, mode: propose
@@ -125,6 +133,34 @@ The engine scripts exist and their tests pass, but the guarantees in [Security](
 ```
 
 `doctor` fails loudly if a guarantee in the [Security](#security) section is not actually in place (token scopes, branch protection, CODEOWNERS, allowlists, scheduler wiring). Lanes refuse to run in `autonomous` mode until it passes.
+
+### Try it offline in 5 minutes
+
+No GitHub, no API key, no installs beyond Python 3.10+ and git. Every command below runs from a clone and touches nothing outside it (and a temp directory).
+
+```bash
+git clone https://github.com/wernerh/laneguard && cd laneguard
+
+# the unit tests: guard scripts, scaffold, dashboard, offline evals
+python3 -m unittest discover -s guard/tests
+python3 -m unittest discover -s scripts/tests
+python3 -m unittest discover -s dashboard/tests
+python3 -m unittest discover -s evals/tests -t .
+
+# what init would write, without writing it (any 40-hex SHA will do for a rehearsal)
+python3 scripts/init.py --profile minimal --project demo --repo me/demo --owner my-login \
+  --engine-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --dry-run
+
+# scaffold a throwaway directory and run doctor on it, offline
+python3 scripts/init.py --profile minimal --project demo --repo me/demo --owner my-login \
+  --engine-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --target /tmp/laneguard-demo
+(cd /tmp/laneguard-demo && python3 .laneguard/guard/doctor.py --offline --engine-root "$OLDPWD")
+
+# static conformance check of the agent files against the spec
+python3 evals/conformance/check_agents.py
+```
+
+Expected: every test suite ends with `OK`, `doctor` ends with `doctor: PASS (0 failed, 1 warnings, 2 skipped)` (the WARN is the demo having no validation commands; the token and branch-protection checks are SKIP offline), and `check_agents.py` prints `no problems`.
 
 ## Usage examples (planned)
 
@@ -150,12 +186,13 @@ Approval is a GitHub comment from a login listed in `owners:`, verified through 
 ```text
 > /laneguard:run dev --dry-run
 
-lock          acquired (dry run: not written)
+pause         no flags (checked read-only)
+lock          not taken (dry run)
 observer      2 open issues, CI green, 0 stale claims
 triager       #12 OK, #14 NEEDS_CRITERIA (plan has none)
 gatekeeper    #12 PASS
 would do      implement #12 "Add --delimiter flag" on branch laneguard/12-delimiter-flag
-report        written to laneguard-data; no branches, PRs or comments created
+report        printed here only; no lock, branches, PRs, comments or history records
 ```
 
 ### 3. Schedule the lanes
@@ -259,15 +296,28 @@ validation:                        # your commands; Laneguard is language-agnost
   test: "npm test"
   build: "npm run build"
 
-models:                            # tiers, not IDs. Reviewers default to a different model than the implementer
+models:                            # tiers, not IDs, keyed by agent name. Reviewers default to a different tier than the implementer
   observer: fastest
   triager: mid
   implementer: mid
-  reviewer: strongest
+  reviewer-dev: strongest
+  reviewer-security: strongest
 
 extra_gates: []                    # additive only; the built-in gates cannot be removed
 extra_protected_paths: []          # additive only
 ```
+
+`models:` keys are agent names (`observer`, `triager`, `gatekeeper`, `implementer`, `validator`, `architect`, `planner`, `reviewer-<lane>`); `laneconfig.validate` rejects anything else, so a bare `reviewer:` is an error. The model an agent actually runs with is the `model:` frontmatter in its file under [`agents/`](agents/) (reviewers `opus`, implementer `sonnet`, observer and validator `haiku`); the config block is only read by `doctor`, which checks that the reviewer and implementer tiers differ.
+
+## FAQ
+
+**Is this a sandbox?** No. The tool allowlist and the App's permissions limit what the agent may ask for; anything the project lets it run (your test command, your build) runs real code with the job's environment. Run lanes on ephemeral runners or containers if that matters.
+
+**Why not just branch protection?** Laneguard requires branch protection and `doctor` checks it. What branch protection does not give you is the rest: the atomic lock, the protected-path logic in `check.py`, budgets and the circuit breaker, and approval verification that distinguishes an owner's `/approve` from a stranger's.
+
+**How is this different from claude-code-action?** It is a building block Laneguard can use as the scheduler. Laneguard adds the parts around it: named lanes, a shared lock, gates, the triager firewall, protected paths and a checker that fails the PR.
+
+**Does it work?** The unit tests pass, offline. Lane runs have not been exercised end to end against live GitHub. Read the status block at the top before pointing it at anything real.
 
 ## Agents
 
@@ -309,7 +359,7 @@ Laneguard is a governance layer for agents that can change your repository. Read
 
 | Threat | Mitigation (where enforced) | Residual risk |
 |---|---|---|
-| **Prompt injection** through issues, PRs or comments | Triager firewall; implementer and reviewers never see raw text; acceptance criteria come only from the owner-approved plan; only owner-created or owner-labelled issues are acted on; corpus of injection tests | A model can still be fooled by content inside code or docs it legitimately reads. Review PRs from `propose` mode before trusting `autonomous` |
+| **Prompt injection** through issues, PRs or comments | Triager firewall; implementer and reviewers never see raw text; acceptance criteria come only from the owner-approved plan; only owner-created or owner-labelled issues are acted on; corpus of injection tests, exercised against the heuristic scanner only (agent behaviour is not yet tested) | A model can still be fooled by content inside code or docs it legitimately reads. Review PRs from `propose` mode before trusting `autonomous` |
 | **Lane edits its own protocol, reviewer, limits or allowlist** | Protected paths + CODEOWNERS + `check.py`; lanes run as a bot identity that is never an owner | An owner who merges a malicious PR defeats this |
 | **Over-privileged token** | Dedicated GitHub App: no workflow-file write, no admin, no secrets access; owner token never used by a lane | Misconfiguration. `doctor` checks scopes |
 | **Spoofed approval** | Approvals only via authenticated GitHub comments from listed owners, never edited after posting; email is notify-only, no inbound email handling | Compromise of an owner GitHub account |
@@ -334,7 +384,7 @@ Laneguard is a governance layer for agents that can change your repository. Read
 
 1. **Create a dedicated GitHub App** for lanes. Grant only: contents (read and write), pull requests (read and write), issues (read and write), commit statuses (read and write; it posts the reviewer verdict). Step-by-step: [GitHub App setup](docs/setup/github-app.md). Do **not** grant: workflows, administration, secrets, environments, or organisation permissions. Never use a personal access token.
 2. **Branch protection or a ruleset on your default branch:**
-   - require a pull request and the `laneguard-guard` check (plus the reviewer check);
+   - require a pull request and the `laneguard-guard / check` check, pinned to the GitHub Actions app (plus `laneguard-review` and your CI check for `autonomous` lanes);
    - require CODEOWNERS review;
    - do **not** list the bot (or an admin you use for lanes) as a bypass actor;
    - block force-pushes and deletions.
@@ -375,14 +425,13 @@ Please report privately through the repository's **Security** tab ("Report a vul
 
 ## How it compares
 
-A survey of the Claude Code and agent ecosystem in October 2026 found these neighbours. Star counts are approximate and omitted; the point is what each is for.
+A survey of the Claude Code and agent ecosystem in October 2026 found these neighbours. The point is what each is for, not popularity.
 
 | Project | What it is | How Laneguard differs |
 |---|---|---|
 | [spec-kit](https://github.com/github/spec-kit), [OpenSpec](https://github.com/Fission-AI/OpenSpec), [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) | Spec-driven development workflows, mostly interactive | Laneguard includes a design pipeline too, but its focus is the unattended, scheduled phase and its enforcement |
 | [superpowers](https://github.com/obra/superpowers) | A methodology of composable skills inside a session | Complementary: session-based methodology versus scheduled lanes with a control plane |
 | [claude-code-action](https://github.com/anthropics/claude-code-action) | A GitHub Action that runs Claude Code on events | A building block. Laneguard can use it as the scheduler, and adds lanes, locks, gates and guardrails |
-| OpenAI Symphony | A reference implementation that polls an issue tracker and dispatches agents | Symphony states it has no built-in sandboxing or approval gates; Laneguard's focus is exactly those |
 | OpenHands, Copilot cloud agent, Devin | Full agent platforms | Larger scope, hosted or heavyweight. Laneguard is a small, auditable, repo-native control layer |
 
 No surveyed project combined named scheduled lanes, a shared atomic lock and mechanically protected protocol files. That came from a limited search, not proof.
@@ -424,7 +473,7 @@ Open decisions (name checks, licence, default scheduler, reviewer model default)
     └── design-spec.md   the full design
 ```
 
-Also present: `guard/` (engine scripts and tests), `scripts/` (init, migrate, eject), `dashboard/`, `templates/` (scaffold), `evals/` and `examples/`. The full target layout is in §3 of the spec.
+Also present: `guard/` (engine scripts and tests), `scripts/` (init, migrate, eject), `dashboard/` (static run dashboard), `templates/` (scaffold), `evals/` (offline eval suite, injection corpus, conformance check) and `examples/`. The full target layout is in §3 of the spec.
 
 ## Contributing
 

@@ -32,8 +32,10 @@ TIER = {"haiku": "fastest", "sonnet": "mid", "opus": "strongest"}
 # Spec section 8 agents table. Access: read-only | docs-write | writer
 # bash_ok: the spec's Access column explicitly gives the agent a command surface (validator: "read-only
 #          plus configured validation commands"; implementer: the writer). Observer and triager are plain
-#          "read-only" in the table, so Bash on them is reported even though forge.py is invoked through
-#          Bash in practice; resolve by changing either the spec table or the agent files.
+#          "read-only" in the table but need Bash to call forge.py (read-only subcommands), so Bash on them
+#          is accepted here, not reported. Their "read-only" is instruction-level for Bash: the project
+#          allowlist grants forge.py to every agent, and the enforced limit is forge.py's own write
+#          allow-list plus branch protection (see docs/security-model.md and issue #6).
 SPEC = {
     "architect":         {"access": "docs-write", "bash_ok": False, "tier": "strongest"},
     "planner":           {"access": "docs-write", "bash_ok": False, "tier": "strongest"},
@@ -49,10 +51,14 @@ SPEC = {
 # Agents that read raw issue/PR/comment text must say it is untrusted data.
 STRICT_UNTRUSTED = {"observer", "triager"}
 STRICT_RE = re.compile(r"(?i)\bdata,? not instructions?\b|\buntrusted\b")
-# Everyone else only has to show awareness: untrusted/data-not-instructions, or that raw issue text is withheld,
-# or an instruction to ignore and flag text that tells it what to do.
-LOOSE_RE = re.compile(r"(?i)untrusted|data,? not instructions?|raw (issue|comment)|not given (issue|raw)|never see raw|"
-                      r"ignore (it|them|that)[^.]*flag|text that tells you|brief")
+# Everyone else only has to show awareness: untrusted/data-not-instructions, a rule not to follow or act on
+# embedded text, that raw issue text is withheld, or that its input is the derived task brief or an
+# owner-approved document. The bare word "brief" is not enough: the phrase must say where the brief came from
+# ("task brief (...)", "the triager's brief", "owner-approved").
+LOOSE_RE = re.compile(r"(?i)untrusted|data,? not instructions?|raw (issue|comment)|not given (issue|raw)|never sees? raw|"
+                      r"ignore (it|them|that)[^.]*flag|text that tells you|"
+                      r"(do not|don't|never) (follow|act on|obey)[^.]*(text|instruction|comment)|treat[^.]* as data|"
+                      r"owner[- ]approve[sd]|approved (brief|spec|plan)|triager'?s (task )?brief|task brief \(")
 WRITE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 
 

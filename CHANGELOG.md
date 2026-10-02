@@ -13,7 +13,7 @@ Pre-alpha. Nothing here has been run end to end against live GitHub. This entry 
 - Design spec (draft v2) with threat model and enforcement table: [`docs/design-spec.md`](docs/design-spec.md).
 - Ten subagent definitions in `agents/`: architect, planner, observer, triager, gatekeeper, implementer, validator and three reviewers (dev, security, design).
 - Skills: `intake`, `spec`, `plan`, `core`, and the three lane skills (`dev-lane`, `security-lane`, `design-lane`).
-- Commands: `new`, `run`, `status`, `pause`, `resume`, `init`, `doctor`, `migrate`, `eject`. Command wiring to the guard scripts is still being finished; `migrate` and `eject` are not built.
+- Commands: `new`, `run`, `status`, `pause`, `resume`, `init`, `doctor`, `migrate`, `eject`, each wired to the script it wraps (`scripts/init.py`, `scripts/migrate.py`, `scripts/eject.py`, `guard/doctor.py`, `guard/history.py`, `guard/lock.py`).
 - Plugin and marketplace manifests, and logo assets.
 - Guard scripts (Python 3, standard library only) in `guard/`, each with unit tests in `guard/tests/`:
   - `lock.py`: atomic lock as a git ref, compare-and-swap pushes, leases and heartbeats, forge-supplied time.
@@ -24,7 +24,9 @@ Pre-alpha. Nothing here has been run end to end against live GitHub. This entry 
   - `doctor.py`: preflight that reports whether guarantees are actually in place.
   - `laneconfig.py`: dependency-free config parser and validator.
 - Scaffold: `scripts/init.py` / `init.sh` and `templates/` (config, state, CODEOWNERS, guard and per-lane workflows, CI templates, project docs), with tests in `scripts/tests/`. Actions are pinned to full commit SHAs.
-- Eval suite scaffolding in `evals/` (injection corpus, fixture repositories, scorer, offline tests). No results from live agent runs have been published.
+- `scripts/migrate.py` (owner-reviewed PR that patches engine-managed scaffold files to a newer engine) and `scripts/eject.py` (vendors skills, agents and commands into `.claude/`), with tests.
+- Static dashboard in `dashboard/` (`build.py` renders run history to one HTML page), with tests.
+- Eval suite in `evals/` (injection corpus, fixture repositories, scorer, agent conformance checker, offline tests). The corpus is exercised against the heuristic scanner only; no results from live agent runs have been published.
 - Documentation: setup guides for the [GitHub App](docs/setup/github-app.md), [branch protection](docs/setup/branch-protection.md), the [scheduler](docs/setup/scheduler.md) and a [quickstart](docs/setup/quickstart.md); a [security model](docs/security-model.md); drafts for the launch in `docs/launch/`.
 - Repository hygiene: issue and pull request templates, CI for this repository (tests on Python 3.10 to 3.13), contributing and security policies.
 

@@ -5,8 +5,9 @@ Run from the repo root:
 
 These tests measure the mechanical guard only (scan_untrusted heuristics, check.py diff checks,
 fixture integrity, the scorer). They do NOT measure agent behaviour; that needs live runs (evals/README.md).
-Where a test is marked expectedFailure, it documents a genuine gap found in guard/ and must be flipped
-to a normal test when the gap is fixed.
+Where the guard has a limit by design (a paraphrase with no trigger phrase, gutted assertions), the test
+asserts the current behaviour and says so in a comment, so the limit stays visible. A corpus item may
+carry "known_scanner_gap": true to be excluded from the blanket scan test while a gap is open; none does today.
 """
 import json
 import os
@@ -69,11 +70,12 @@ class InjectionCorpusScan(unittest.TestCase):
         for p in CORPUS:
             assert_no_secrets(self, p.read_text(encoding="utf-8"), str(p))
 
-    # GENUINE GAP (reported): forge.scan_untrusted does not fold Unicode confusables, so Cyrillic
-    # homoglyphs defeat every ASCII regex. The scan is advisory (the defence is the triager firewall),
-    # but the spec says the triager should return SUSPICIOUS on injection fixtures. Flip when fixed.
+    # Was a genuine gap: forge.scan_untrusted used not to fold Unicode confusables, so Cyrillic homoglyphs
+    # defeated every ASCII regex. _fold now applies NFKC plus a confusables map; item 019 is no longer
+    # marked known_scanner_gap, so the blanket test above covers it too. Kept as a named regression test.
     def test_homoglyph_evasion_is_flagged(self):
         item = next(i for i in load_corpus() if i["attack"] == "homoglyph")
+        self.assertFalse(item.get("known_scanner_gap"), "019 must not be excluded from the corpus scan")
         self.assertIn(item["expect_flag"], forge.scan_untrusted(item["title"] + "\n" + item["body"]))
 
     # DOCUMENTED LIMIT, not a bug: a pure paraphrase with no trigger phrase cannot be caught by regexes.
@@ -210,9 +212,9 @@ class CheckWeakenedChecks(unittest.TestCase):
         self.assertEqual(errors(fs), [])
         self.assertTrue([f for f in fs if f.check == "weakened-checks" and f.severity == ck.WARNING])
 
-    # GENUINE GAP (reported): SKIP_MARKERS match '@unittest.skip' and '@pytest.mark.skip' with a
-    # trailing \b, so the conditional forms skipIf / skipUnless / skipif are not recognised. With a
-    # constant-true condition they disable a test exactly like skip. Flip when fixed.
+    # Was a genuine gap: SKIP_MARKERS once matched only '@unittest.skip' and '@pytest.mark.skip', so the
+    # conditional forms skipIf / skipUnless / skipif slipped through. check.py now lists them explicitly;
+    # this stays as a regression test.
     def test_conditional_skip_forms(self):
         for name, d in {
             "unittest.skipIf": make_diff("tests/test_a.py", ["@unittest.skipIf(True, 'x')"]),

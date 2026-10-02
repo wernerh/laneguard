@@ -1,7 +1,7 @@
 {
   "name": "laneguard",
   "version": "0.1.0",
-  "description": "Autonomous dev lanes with a leash. Gated, scheduled agent lanes with enforced limits: a design-first pipeline, ten purpose-built subagents, and lane skills (pre-alpha preview).",
+  "description": "Autonomous dev lanes with a leash. Gated, scheduled agent lanes with enforced limits: a design-first pipeline, ten purpose-built subagents, lane skills, guard scripts, scaffold, migrate/eject, evals and dashboard, all with passing unit tests. Pre-alpha: not yet exercised end to end against live GitHub.",
   "author": {
     "name": "Werner Hurter",
     "url": "https://github.com/wernerh"

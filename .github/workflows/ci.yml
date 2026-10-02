@@ -32,7 +32,11 @@ jobs:
           git config --global init.defaultBranch main
       - name: Guard tests
         run: python3 -m unittest discover -s guard/tests -v
-      - name: Scaffold (init) tests
+      - name: Scaffold (init, migrate, eject) tests
         run: python3 -m unittest discover -s scripts/tests -v
+      - name: Dashboard tests
+        run: python3 -m unittest discover -s dashboard/tests -v
       - name: Eval suite offline tests
         run: python3 -m unittest discover -s evals/tests -t . -v
+      - name: Agent conformance check
+        run: python3 evals/conformance/check_agents.py
