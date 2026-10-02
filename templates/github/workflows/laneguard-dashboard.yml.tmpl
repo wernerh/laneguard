@@ -23,6 +23,11 @@ jobs:
         id: pin
         run: |
           sha="$(grep '^sha:' .laneguard/plugin.lock | head -1 | awk '{print $2}')"
+          # Refuse anything but a full commit SHA: a branch or tag here would let the engine move under the pin.
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error file=.laneguard/plugin.lock::sha '$sha' is not a full 40-character commit SHA; refusing to check out the engine"
+            exit 1
+          fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@{{CHECKOUT_SHA}}
         with:

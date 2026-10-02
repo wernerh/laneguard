@@ -65,12 +65,36 @@ class MigrateTests(Base):
         (self.proj / ".laneguard/guard/history.py").write_text("# hacked\n")
         plan = mg.plan_migration(self.proj, self.engine, NEW)
         self.assertEqual(plan["conflicts"], [".laneguard/guard/history.py"])
-        mg.apply(plan, self.proj)
+        with self.assertRaises(ini.InitError):
+            mg.apply(plan, self.proj)
         self.assertEqual((self.proj / ".laneguard/guard/history.py").read_text(), "# hacked\n")
         self.assertEqual(self.doctor()["scaffold"].status, dr.FAIL)
         plan = mg.plan_migration(self.proj, self.engine, NEW, overwrite_conflicts=True)
         mg.apply(plan, self.proj)
         self.assertEqual(self.doctor()["scaffold"].status, dr.PASS)
+
+    def test_guard_conflict_refuses_apply_and_writes_nothing(self):
+        (self.proj / ".laneguard/guard/history.py").write_text("# hacked\n")
+        before = {p: p.read_text() for p in self.proj.rglob("*") if p.is_file()}
+        rc = mg.main(["--engine-sha", NEW, "--target", str(self.proj), "--plugin-root", str(self.engine), "--apply", "--json"])
+        self.assertEqual(rc, 1)
+        after = {p: p.read_text() for p in self.proj.rglob("*") if p.is_file()}
+        self.assertEqual(before, after)  # mixed-version guard dir never happens
+        self.assertIn(f"sha: {OLD}", (self.proj / ".laneguard/plugin.lock").read_text())
+        rc = mg.main(["--engine-sha", NEW, "--target", str(self.proj), "--plugin-root", str(self.engine),
+                      "--apply", "--overwrite-conflicts"])
+        self.assertEqual(rc, 0)
+        self.assertIn("newer release", (self.proj / ".laneguard/guard/history.py").read_text())
+        self.assertIn(f"sha: {NEW}", (self.proj / ".laneguard/plugin.lock").read_text())
+
+    def test_non_guard_conflict_is_still_skipped_on_apply(self):
+        wf = self.proj / ".github/workflows/laneguard-lane-dev.yml"
+        wf.write_text(wf.read_text() + "# tuned locally\n")
+        rc = mg.main(["--engine-sha", NEW, "--target", str(self.proj), "--plugin-root", str(self.engine), "--apply"])
+        self.assertEqual(rc, 1)
+        self.assertIn("# tuned locally", wf.read_text())
+        self.assertIn("newer release", (self.proj / ".laneguard/guard/history.py").read_text())
+        self.assertIn(f"sha: {NEW}", (self.proj / ".laneguard/plugin.lock").read_text())
 
     def test_changelog_and_exit_codes(self):
         self.assertEqual(mg.main(["--engine-sha", NEW, "--target", str(self.proj), "--plugin-root", str(self.engine)]), 0)
@@ -109,12 +133,18 @@ class EjectTests(Base):
         self.assertFalse((self.proj / ".claude/agents").exists())
         self.assertEqual(ej.main(["--engine-sha", "v1", "--target", str(self.proj)]), 2)
 
-    def test_migrate_after_eject_keeps_vendored_workflows(self):
+    def test_migrate_after_eject_is_refused_and_writes_nothing(self):
         ej.main(["--engine-sha", OLD, "--target", str(self.proj), "--apply"])
-        plan = mg.plan_migration(self.proj, self.engine, NEW)
-        mg.apply(plan, self.proj)
-        self.assertNotIn("laneguard-engine", (self.proj / ".github/workflows/laneguard-lane-dev.yml").read_text())
+        before = {p: p.read_text() for p in self.proj.rglob("*") if p.is_file()}
+        with self.assertRaises(ini.InitError) as cm:
+            mg.plan_migration(self.proj, self.engine, NEW)
+        self.assertIn("eject", str(cm.exception))
+        rc = mg.main(["--engine-sha", NEW, "--target", str(self.proj), "--plugin-root", str(self.engine), "--apply"])
+        self.assertEqual(rc, 2)
+        after = {p: p.read_text() for p in self.proj.rglob("*") if p.is_file()}
+        self.assertEqual(before, after)
         self.assertIn("vendored: true", (self.proj / ".laneguard/plugin.lock").read_text())
+        self.assertNotIn("laneguard-engine", (self.proj / ".github/workflows/laneguard-lane-dev.yml").read_text())
 
 
 if __name__ == "__main__":

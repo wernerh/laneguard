@@ -19,15 +19,17 @@ Laneguard is pre-alpha: the design is written and the guard scripts, scaffold an
 
 ## Running the tests
 
-Python 3.10 or newer, standard library only; no installation step. Run these from the repository root (CI runs the same three commands on Python 3.10 to 3.13):
+Python 3.10 or newer, standard library only; no installation step. Run these from the repository root (CI runs the same commands on Python 3.10 to 3.13):
 
 ```bash
-python3 -m unittest discover -s guard/tests      # lock, check, forge, history, allowlist, doctor, config
-python3 -m unittest discover -s scripts/tests    # init / scaffold
-python3 -m unittest discover -s evals/tests -t . # eval suite, offline (no network, no model calls)
+python3 -m unittest discover -s guard/tests       # lock, check, forge, history, allowlist, doctor, config
+python3 -m unittest discover -s scripts/tests     # init / migrate / eject
+python3 -m unittest discover -s dashboard/tests   # static dashboard
+python3 -m unittest discover -s evals/tests -t .  # eval suite, offline (no network, no model calls)
+python3 evals/conformance/check_agents.py         # static check of agents/*.md; exit 1 on problems
 ```
 
-The guard tests create temporary git repositories, so `git` must be installed and able to commit (set `user.name` and `user.email` if it complains). A few tests are marked `expectedFailure`: they document known gaps in the guard, and should be turned into normal tests when the gap is fixed.
+The guard tests create temporary git repositories, so `git` must be installed and able to commit (set `user.name` and `user.email` if it complains). Where the guard has a known limit that is a limit by design rather than a bug (for example, a paraphrased injection with no trigger phrase), the test asserts the current behaviour and says so in a comment, so the limit stays visible. When a gap is fixed, the test asserting it changes in the same PR.
 
 ## Rules for guard changes
 

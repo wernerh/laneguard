@@ -459,15 +459,19 @@ def build_context(repo: str, base: str, head: str, author: str, author_type: str
                   linked_issues=tuple(linked), read_head=make_reader(repo, head), read_base=read_base,
                   trust_issue=trust_issue, lock_status=lock_status)
     if cfg is not None and not offline:
+        # Build the forge from the *base-commit* config already in hand, never from the PR's working tree:
+        # a PR that edits owners:/repo: must not be able to change who counts as an owner for its own checks.
+        f = None
         try:
             import forge as forge_mod
-            f = forge_mod.from_config(repo)
+            f = forge_mod.Forge(cfg["repo"], cfg["owners"], cfg.get("approvals_required", 1),
+                                claim_expiry_hours=cfg["limits"]["claim_expiry_hours"])
             ctx.trust_issue = ctx.trust_issue or f.trust_issue
         except Exception:
             pass
         try:
             import lock as lock_mod
-            store = lock_mod.LockStore(repo, clock=lock_mod.ForgeClock(), ttl_minutes=cfg["limits"]["lock_ttl_minutes"])
+            store = lock_mod.LockStore(repo, clock=lock_mod.ForgeClock(f), ttl_minutes=cfg["limits"]["lock_ttl_minutes"])
             ctx.lock_status = ctx.lock_status or store.status
         except Exception:
             pass

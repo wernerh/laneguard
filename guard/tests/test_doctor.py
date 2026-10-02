@@ -27,6 +27,7 @@ permissions:
   contents: read
 jobs:
   check:
+    name: laneguard-guard / check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@%s
@@ -57,7 +58,8 @@ GOOD_RULES = {
     "permissions": {"admin": False, "maintain": False, "push": True},
     "effective_rules": [
         {"type": "pull_request", "parameters": {"require_code_owner_review": True, "required_approving_review_count": 1}},
-        {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": dr.GUARD_CHECK_CONTEXT}]}},
+        {"type": "required_status_checks", "parameters": {"required_status_checks": [
+            {"context": dr.GUARD_CHECK_CONTEXT, "integration_id": dr.GITHUB_ACTIONS_APP_ID}]}},
         {"type": "non_fast_forward"}, {"type": "deletion"},
     ],
     "classic_protection": None, "rulesets": [],
@@ -177,6 +179,12 @@ class OfflineTests(Base):
         self.assertIn("pull_request_target", self._wf(GUARD_WF.replace("[pull_request]", "[pull_request_target]"),
                                                        "laneguard-guard.yml").detail)
 
+    def test_guard_job_name_must_equal_required_check_context(self):
+        """Issue #12: the required-check context is the job's literal name."""
+        r = self._wf(GUARD_WF.replace("name: laneguard-guard / check", "name: guard"), "laneguard-guard.yml")
+        self.assertEqual(r.status, dr.FAIL)
+        self.assertIn("no job named", r.detail)
+
     def test_timeout_must_match_config(self):
         r = self._wf(LANE_WF.replace("timeout-minutes: 30", "timeout-minutes: 90"))
         self.assertIn("timeout-minutes", r.detail)
@@ -265,7 +273,7 @@ class OnlineTests(Base):
     def test_classic_protection_is_understood(self):
         cfg = lc._merge_defaults(lc.loads(CONFIG))
         classic = {"required_pull_request_reviews": {"require_code_owner_reviews": True, "required_approving_review_count": 1},
-                   "required_status_checks": {"contexts": [dr.GUARD_CHECK_CONTEXT], "checks": []},
+                   "required_status_checks": {"contexts": [], "checks": [{"context": dr.GUARD_CHECK_CONTEXT, "app_id": dr.GITHUB_ACTIONS_APP_ID}]},
                    "allow_force_pushes": {"enabled": False}, "allow_deletions": {"enabled": False}}
         got = dr.analyze_rules({"effective_rules": None, "classic_protection": classic, "rulesets": None}, cfg)
         self.assertEqual([c.id for c in got if c.status == dr.FAIL], [])
@@ -275,6 +283,40 @@ class OnlineTests(Base):
         for actor, want in (("Integration", dr.FAIL), ("RepositoryRole", dr.WARN)):
             rules = dict(GOOD_RULES, rulesets=[{"enforcement": "active", "bypass_actors": [{"actor_type": actor}]}])
             self.assertEqual({c.id: c for c in dr.analyze_rules(rules, cfg)}["branch.bypass"].status, want)
+
+    def test_required_check_not_pinned_to_actions_fails(self):
+        """Issue #3: a bare context can be satisfied by a forged commit status."""
+        cfg = lc._merge_defaults(lc.loads(CONFIG))
+        unpinned = dict(GOOD_RULES, effective_rules=[
+            r if r["type"] != "required_status_checks" else
+            {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": dr.GUARD_CHECK_CONTEXT}]}}
+            for r in GOOD_RULES["effective_rules"]])
+        got = {c.id: c for c in dr.analyze_rules(unpinned, cfg)}["branch.required-checks"]
+        self.assertEqual(got.status, dr.FAIL)
+        self.assertIn("not pinned to GitHub Actions", got.detail)
+        classic = {"required_pull_request_reviews": {"require_code_owner_reviews": True, "required_approving_review_count": 1},
+                   "required_status_checks": {"contexts": [dr.GUARD_CHECK_CONTEXT], "checks": []},
+                   "allow_force_pushes": {"enabled": False}, "allow_deletions": {"enabled": False}}
+        got = {c.id: c for c in dr.analyze_rules({"effective_rules": None, "classic_protection": classic, "rulesets": None}, cfg)}
+        self.assertEqual(got["branch.required-checks"].status, dr.FAIL)
+        wrong_app = dict(GOOD_RULES, effective_rules=[
+            r if r["type"] != "required_status_checks" else
+            {"type": "required_status_checks", "parameters": {"required_status_checks": [
+                {"context": dr.GUARD_CHECK_CONTEXT, "integration_id": 99}]}}
+            for r in GOOD_RULES["effective_rules"]])
+        self.assertEqual({c.id: c for c in dr.analyze_rules(wrong_app, cfg)}["branch.required-checks"].status, dr.FAIL)
+
+    def test_ruleset_without_bypass_data_skips_not_passes(self):
+        """Issue #4: the rulesets list endpoint omits bypass_actors; that is not evidence of none."""
+        cfg = lc._merge_defaults(lc.loads(CONFIG))
+        listed = dict(GOOD_RULES, rulesets=[{"id": 1, "enforcement": "active", "name": "main"}])
+        got = {c.id: c for c in dr.analyze_rules(listed, cfg)}["branch.bypass"]
+        self.assertEqual(got.status, dr.SKIP)
+        self.assertTrue(got.critical)
+        empty = dict(GOOD_RULES, rulesets=[{"id": 1, "enforcement": "active", "bypass_actors": []}])
+        self.assertEqual({c.id: c for c in dr.analyze_rules(empty, cfg)}["branch.bypass"].status, dr.PASS)
+        disabled = dict(GOOD_RULES, rulesets=[{"id": 1, "enforcement": "disabled"}])
+        self.assertEqual({c.id: c for c in dr.analyze_rules(disabled, cfg)}["branch.bypass"].status, dr.PASS)
 
     def test_autonomous_requires_review_check(self):
         cfg = lc._merge_defaults(lc.loads(CONFIG.replace("mode: propose }", "mode: autonomous }")))

@@ -4,8 +4,9 @@
 Renders ``templates/`` into a target repo, copies the guard scripts, pins the engine to a full
 commit SHA, records a hash manifest in ``.laneguard/scaffold.version`` (so doctor can detect a
 tampered guard script and migrate can detect local edits), and generates ``.claude/settings.json``
-from the config. Always starts in ``mode: propose``. Existing files are never overwritten
-unless ``--force`` is given. Python 3, standard library only.
+from the config. Always starts in ``mode: propose`` (lanes inherit the project mode). Existing files are
+never overwritten unless ``--force`` is given, and a project that already has a ``scaffold.version`` is
+refused without ``--force`` (use /laneguard:migrate instead). Python 3, standard library only.
 """
 from __future__ import annotations
 
@@ -87,6 +88,15 @@ def yq(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def heartbeat_for(lock_ttl: int) -> int:
+    """Heartbeat interval that always satisfies validate(): at most half the lock TTL, never above 10."""
+    return min(10, max(1, lock_ttl // 2))
+
+
+def already_initialised(target: Path) -> bool:
+    return (target / ".laneguard/scaffold.version").exists()
+
+
 def args_from_project(target: Path, engine_sha: str, engine_repo=None, vendored=False, dashboard=None):
     """Rebuild init's inputs from an initialised project (used by migrate and eject)."""
     import types
@@ -117,11 +127,15 @@ def build_plan(a, plugin_root: Path) -> list:
     if not laneconfig.is_full_sha(a.engine_sha):
         raise InitError("--engine-sha must be a full 40-character commit SHA")
     run_max = a.run_max_minutes
-    lane_lines, vals_common = [], {}
+    if run_max < 1:
+        raise InitError("--run-max-minutes must be at least 1")
+    lock_ttl = run_max + 15
+    lane_lines = []
     for i, lane in enumerate(lanes):
         d = laneconfig.DEFAULT_LANES[lane]
         owns = ", ".join(d["owns"])
-        lane_lines.append(f'  {lane}: {{ label: {d["label"]}, schedule: {yq(d["schedule"])}, owns: [{owns}], mode: propose }}')
+        # no per-lane mode: lanes inherit the project mode so lowering it in config.yaml takes effect (issue #5)
+        lane_lines.append(f'  {lane}: {{ label: {d["label"]}, schedule: {yq(d["schedule"])}, owns: [{owns}] }}')
     base = {
         "PROJECT": a.project, "REPO": a.repo, "PROFILE": a.profile,
         "OWNERS_YAML": "[" + ", ".join(owners) + "]",
@@ -133,7 +147,7 @@ def build_plan(a, plugin_root: Path) -> list:
         "VALIDATION_LINT_OR_TRUE": a.validation_lint or "true",
         "VALIDATION_TEST_OR_TRUE": a.validation_test or "true",
         "VALIDATION_BUILD_OR_TRUE": a.validation_build or "true",
-        "RUN_MAX_MINUTES": run_max, "LOCK_TTL_MINUTES": run_max + 15,
+        "RUN_MAX_MINUTES": run_max, "LOCK_TTL_MINUTES": lock_ttl, "HEARTBEAT_MINUTES": heartbeat_for(lock_ttl),
         "ENGINE_VERSION": engine_version(plugin_root), "ENGINE_REPO": a.engine_repo,
         **ACTION_SHAS,
     }
@@ -229,6 +243,9 @@ def main(argv=None) -> int:
     a.vendored = False
     a.owner = [o.strip().lstrip("@") for chunk in a.owner for o in chunk.split(",") if o.strip()]
     try:
+        if already_initialised(Path(a.target)) and not a.force:
+            raise InitError("this project is already initialised (.laneguard/scaffold.version exists); "
+                            "use /laneguard:migrate to update it, or --force to re-scaffold")
         plan = build_plan(a, Path(a.plugin_root))
         if a.dry_run:
             print(json.dumps({"would_write": [p for p, _, _ in plan]}, indent=2))

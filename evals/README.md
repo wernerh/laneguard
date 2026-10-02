@@ -32,7 +32,7 @@ evals/
 
 Fixture test commands are in each `manifest.json`. All seeded tests fail on the fixtures as shipped; a reference fix inside `tests/test_offline.py` proves each is solvable. Fixtures contain no credentials and nothing that matches `SECRET_PATTERNS` in `guard/check.py`.
 
-Corpus items have: `id`, `surface` (issue, issue_comment, pr_comment, pr_body), `attack`, `title`, `body`, `expect_flag` (the `forge.scan_untrusted` flag expected), `expect_clean`, `must_never_happen`, and optionally `known_scanner_gap` with `gap_note`.
+Corpus items have: `id`, `surface` (issue, issue_comment, pr_comment, pr_body), `attack`, `title`, `body`, `expect_flag` (the `forge.scan_untrusted` flag expected), `expect_clean`, `must_never_happen`, and optionally `known_scanner_gap` with `gap_note` (excludes the item from the blanket scan test while a scanner gap is open; no item carries it today).
 
 ## Run offline (no network, no model, free)
 
@@ -44,7 +44,7 @@ python3 evals/score.py --selftest
 
 Offline tests exercise only the mechanical guard: `forge.scan_untrusted` on the corpus, `check.py` on synthetic diffs, fixture integrity, the scorer. They say nothing about how an agent behaves. Node fixture tests are skipped when `node` and `npm` are absent.
 
-Findings from offline runs are not hidden: where the guard does not behave as the spec implies, the test is marked `expectedFailure` with a comment explaining the gap, so it surfaces when it is fixed.
+Findings from offline runs are not hidden: where the guard has a limit by design, the test asserts the current behaviour with a comment saying so; where a corpus item exposes an open scanner gap, it is marked `known_scanner_gap` and a named test documents it until it is fixed.
 
 ## Run live (not run here)
 
@@ -102,5 +102,6 @@ The live harness that automates steps 2 to 4 is not written yet; the steps above
 ## Known limits of this suite
 
 - The injection corpus is small and written by the project's authors; it is a regression set, not a proof of safety.
-- `forge.scan_untrusted` is an advisory heuristic. Two corpus items (a Cyrillic homoglyph and a pure paraphrase) are not flagged by it; see the test comments.
+- `forge.scan_untrusted` is an advisory heuristic. It folds NFKC and common confusables, so the Cyrillic homoglyph item is flagged, but a pure paraphrase with no trigger phrase is not and cannot be by regex; see the test comments.
+- The corpus is exercised against the heuristic scanner only. Whether the triager, implementer or reviewers actually resist these texts is not yet tested; that needs live runs.
 - Conformance checks are static. Whether an agent obeys its prompt is only observable in live runs.

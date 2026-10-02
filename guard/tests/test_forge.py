@@ -270,6 +270,27 @@ class ClaimTests(unittest.TestCase):
         self.assertTrue(by_issue[3]["active"])
 
 
+class RulesTests(unittest.TestCase):
+    def test_rules_fetches_each_ruleset_by_id_for_bypass_actors(self):
+        """Issue #4: the list endpoint has no bypass_actors, so each ruleset is fetched by id."""
+        f = forge({
+            ("GET", R): {"default_branch": "main", "permissions": {}, "visibility": "private"},
+            ("GET", f"{R}/rules/branches/main"): [],
+            ("GET", f"{R}/branches/main/protection"): fg.Response(404, {}, {}),
+            ("GET", f"{R}/rulesets"): [{"id": 7, "name": "main", "enforcement": "active"},
+                                       {"id": 8, "name": "unfetchable", "enforcement": "active"}],
+            ("GET", f"{R}/rulesets/7"): {"id": 7, "enforcement": "active",
+                                         "bypass_actors": [{"actor_type": "Integration", "actor_id": 1}]},
+            ("GET", f"{R}/rulesets/8"): fg.Response(403, {}, {}),
+        })
+        got = f.rules()
+        self.assertEqual(got["rulesets"][0]["bypass_actors"][0]["actor_type"], "Integration")
+        self.assertNotIn("bypass_actors", got["rulesets"][1])  # kept in list shape -> doctor SKIPs
+        paths = [p for m, p, _ in f.t.calls if m == "GET"]
+        self.assertIn(f"{R}/rulesets/7", paths)
+        self.assertIn(f"{R}/rulesets/8", paths)
+
+
 class TransportParsingTests(unittest.TestCase):
     def run_gh(self, stdout, returncode=0, stderr=""):
         cp = subprocess.CompletedProcess(["gh"], returncode, stdout, stderr)

@@ -12,7 +12,7 @@
     {
       "name": "laneguard",
       "source": "./",
-      "description": "Autonomous dev lanes with a leash. Design-first pipeline, ten subagents, and dev, security and design lane skills. Pre-alpha: guard scripts and scaffold are not built yet.",
+      "description": "Autonomous dev lanes with a leash. Design-first pipeline, ten subagents, dev, security and design lane skills, guard scripts, scaffold, migrate/eject, evals and dashboard, all with passing unit tests. Pre-alpha: not yet exercised end to end against live GitHub.",
       "version": "0.1.0",
       "author": {
         "name": "Werner Hurter",

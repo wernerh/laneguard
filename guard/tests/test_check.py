@@ -490,3 +490,27 @@ class BootstrapAndCliTests(CheckTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BaseConfigForgeTests(CheckTestCase):
+    def test_online_forge_is_built_from_base_commit_config(self):
+        """Issue #10: a PR that rewrites owners:/repo: must not change who the checker treats as owner."""
+        import forge as fg
+        r = self.repo()
+        base_cfg = lc._merge_defaults(lc.loads(CONFIG))
+        r.write({".laneguard/config.yaml": CONFIG.replace("owners: [alice]", "owners: [mallory]")})
+        head = r.commit()
+        seen = {}
+        real = fg.Forge
+
+        class Spy(real):
+            def __init__(self, repo, owners, *a, **k):
+                seen["repo"], seen["owners"] = repo, list(owners)
+                super().__init__(repo, owners, *a, transport=object(), **k)
+        fg.Forge = Spy
+        try:
+            ck.build_context(r.dir, r.base, head, "bob", "User", (), (), offline=False)
+        finally:
+            fg.Forge = real
+        self.assertEqual(seen.get("owners"), base_cfg["owners"])
+        self.assertNotIn("mallory", seen.get("owners", []))

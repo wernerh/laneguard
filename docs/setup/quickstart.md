@@ -4,6 +4,26 @@ This takes a repository from nothing to one dev lane running in `propose` mode (
 
 > **Pre-alpha.** The guard scripts (`lock.py`, `check.py`, `forge.py`, `history.py`, `allowlist.py`, `doctor.py`), the scaffold and `scripts/init.py` exist and have unit tests. The lane runs themselves have **not** been exercised end to end against live GitHub. The `/laneguard:*` commands are wired to these scripts; the equivalent script call is shown where useful. Do not point this at a repository you cannot afford to experiment on.
 
+## 0. Try it offline first (optional, 5 minutes)
+
+Before touching a real repository you can exercise everything that runs without GitHub, from a clone:
+
+```bash
+git clone https://github.com/wernerh/laneguard && cd laneguard
+python3 -m unittest discover -s guard/tests
+python3 -m unittest discover -s scripts/tests
+python3 -m unittest discover -s dashboard/tests
+python3 -m unittest discover -s evals/tests -t .
+python3 scripts/init.py --profile minimal --project demo --repo me/demo --owner my-login \
+  --engine-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --dry-run
+python3 scripts/init.py --profile minimal --project demo --repo me/demo --owner my-login \
+  --engine-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --target /tmp/laneguard-demo
+(cd /tmp/laneguard-demo && python3 .laneguard/guard/doctor.py --offline --engine-root "$OLDPWD")
+python3 evals/conformance/check_agents.py
+```
+
+Each test suite ends with `OK`; `doctor` ends with `doctor: PASS (0 failed, 1 warnings, 2 skipped)` (no validation commands in the demo; token and branch protection are not checked offline); `check_agents.py` prints `no problems`. The dummy `--engine-sha` is fine for a rehearsal; for a real `init` use the commit of this repository you intend to pin.
+
 ## 1. Install the plugin
 
 ```text
