@@ -1,0 +1,22 @@
+{
+  "name": "laneguard",
+  "version": "0.1.0",
+  "description": "Autonomous dev lanes with a leash. Gated, scheduled agent lanes with enforced limits: a design-first pipeline, ten purpose-built subagents, and lane skills (pre-alpha preview).",
+  "author": {
+    "name": "Werner Hurter",
+    "url": "https://github.com/wernerh"
+  },
+  "homepage": "https://github.com/wernerh/laneguard",
+  "repository": "https://github.com/wernerh/laneguard",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "autonomous-agents",
+    "ai-agents",
+    "guardrails",
+    "governance",
+    "scheduled",
+    "pull-requests",
+    "spec-driven"
+  ]
+}

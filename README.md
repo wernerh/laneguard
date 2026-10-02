@@ -11,8 +11,8 @@
   A Claude Code plugin that turns an idea into an approved design, then runs scheduled, gated agents ("lanes") that open pull requests for you, while enforcing the limits <i>outside the prompt</i>.
 </p>
 
-> **Status: pre-alpha, design complete, implementation not started.**
-> What exists today: the [design spec](docs/design-spec.md), ten [subagent definitions](agents/), and the logo. The commands, skills and guard scripts described below are **planned**. Usage examples show the intended behaviour and are marked as such. Do not run this against a repository you care about yet. See the [roadmap](#roadmap).
+> **Status: pre-alpha, design complete, guard scripts not started.**
+> What exists today: the [design spec](docs/design-spec.md), ten [subagent definitions](agents/), seven [skills](skills/), nine [commands](commands/), the plugin and marketplace manifests, and the logo. You can [install the preview](#install-the-preview) and try the design pipeline and dry runs. The guard scripts (`lock.py`, `check.py`, `forge.py`), the scaffold and `init`/`doctor` are **planned**, so real lane runs are not available yet. Usage examples below show the intended behaviour and are marked as such. Do not run this against a repository you care about yet. See the [roadmap](#roadmap).
 
 ---
 
@@ -20,6 +20,7 @@
 
 - [Why Laneguard](#why-laneguard)
 - [How it works](#how-it-works)
+- [Install the preview](#install-the-preview)
 - [Quick start (planned)](#quick-start-planned)
 - [Usage examples (planned)](#usage-examples-planned)
 - [Configuration](#configuration)
@@ -78,9 +79,31 @@ It also includes a design-first pipeline (brief, then spec and ADRs, then a phas
 
 Full details are in the [design spec](docs/design-spec.md).
 
+## Install the preview
+
+This repository is its own Claude Code marketplace:
+
+```text
+/plugin marketplace add wernerh/laneguard
+/plugin install laneguard@laneguard
+```
+
+**What works in the 0.1 preview**
+
+| Piece | State |
+|---|---|
+| The ten subagents (`laneguard:architect`, `laneguard:triager`, and so on) | Available |
+| `/laneguard:new "<idea>"` | Works: intake, spec and plan, with owner approval at each stage |
+| `/laneguard:run <lane> --dry-run` | Works: pause check, observer, triager and gatekeeper only; writes nothing |
+| `/laneguard:status`, `/laneguard:pause`, `/laneguard:resume` | Work on whatever `.laneguard/` files exist |
+| `/laneguard:init`, `doctor`, `migrate`, `eject` | Placeholders that explain what is missing and stop |
+| `/laneguard:run <lane>` without `--dry-run` | Refuses until the guard scripts exist |
+
+Until the guard scripts land, the guarantees in [Security](#security) are design intent. In the preview, owner approval in the design pipeline is an in-session confirmation, recorded in the document; the GitHub `/approve` flow arrives with `forge.py`.
+
 ## Quick start (planned)
 
-> These commands do not exist yet. They describe the intended experience.
+> The commands in this section describe the intended full experience. `init` and `doctor` are not built yet; see [Install the preview](#install-the-preview) for what works today.
 
 ```text
 # 1. Add the marketplace and install the plugin
@@ -359,14 +382,16 @@ No surveyed project combined named scheduled lanes, a shared atomic lock and mec
 - [x] Design spec (draft v2) with threat model and enforcement table
 - [x] Ten subagent definitions
 - [x] Logo and brand assets
+- [x] Plugin manifest and marketplace entry (installable preview)
+- [x] Skills: `intake`, `spec`, `plan`, `core`, and the three lane skills
+- [x] Commands: `new`, `run` (dry run), `status`, `pause`, `resume`; placeholders for `init`, `doctor`, `migrate`, `eject`
 
 **Next (in order)**
 - [ ] `lock.py` with concurrency tests (N racers, stale takeover, heartbeat)
 - [ ] `check.py` with protected-path, weakened-check and secret fixtures
-- [ ] `init.sh` and the scaffold templates, `doctor`
-- [ ] Skills: `intake`, `spec`, `plan`, `core`, and the three lane skills
-- [ ] Commands: `init`, `new`, `run`, `status`, `pause`, `resume`
-- [ ] Plugin manifest and marketplace entry (not installable until this lands)
+- [ ] `forge.py` (GitHub adapter, approval verification)
+- [ ] `init.sh` and the scaffold templates; real `init` and `doctor`
+- [ ] Real (non-dry-run) lane runs
 - [ ] Eval suite and injection corpus; publish results
 - [ ] Public example project with recorded runs
 - [ ] `migrate`, `eject`, dashboard
@@ -378,13 +403,16 @@ Open decisions (name checks, licence, default scheduler, reviewer model default)
 ```text
 .
 ├── README.md  SECURITY.md  LICENSE  CONTRIBUTING.md
+├── .claude-plugin/   plugin.json  marketplace.json
 ├── assets/     logo-light.svg  logo-dark.svg  icon.svg
 ├── agents/     ten subagent definitions
+├── skills/     intake  spec  plan  core  dev-lane  security-lane  design-lane
+├── commands/   new  run  status  pause  resume  init  doctor  migrate  eject
 └── docs/
     └── design-spec.md   the full design
 ```
 
-The target layout (skills, commands, guard scripts, templates, evals) is in §3 of the spec.
+The target layout (guard scripts, templates, evals) is in §3 of the spec.
 
 ## Contributing
 
