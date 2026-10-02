@@ -12,8 +12,10 @@ Branch protection is the enforcement point for "no merge without an owner" and "
 | Required approving reviews | at least 1 | The review that CODEOWNERS routes to an owner |
 | Require review from Code Owners | on | Protected paths need an owner, which the bot is not |
 | Dismiss stale approvals on new commits | on (recommended) | An approval should apply to what was reviewed |
-| Required status check | `laneguard-guard / check` | Runs `check.py` against the PR diff |
-| Required status check, autonomous lanes only | `laneguard-review` | The reviewer's verdict. Without it an `autonomous` lane could merge with no independent review |
+| Required status check | `laneguard-guard / check`, pinned to the GitHub Actions app | Runs `check.py` against the PR diff. Pinning the source means a status with the same name posted by another app does not count |
+| Required status check, autonomous lanes only | `laneguard-review` | The reviewer's verdict. Without it an `autonomous` lane could merge with no independent review. Posted by the lane's App, so not pinned to GitHub Actions |
+| Required status check, autonomous lanes only | your project CI check (`validate` if `init --ci` wrote it) | Otherwise an `autonomous` lane can merge a PR whose tests fail; the validator's local run is self-reported |
+| Require branches to be up to date (`strict`), autonomous lanes only | on (recommended) | Checks ran against the merge result, not a stale base |
 | Block force pushes | on | No history rewrite |
 | Block deletions | on | The default branch cannot be removed |
 | Bypass list | **empty for the lane's App** | Never list the bot. See [GitHub App setup](github-app.md#5-why-the-bot-must-never-be-an-owner-or-a-bypass-actor) |
@@ -22,7 +24,7 @@ Also have a CODEOWNERS file (`init` writes one) that names your owners for `/.la
 
 > **Autonomous mode and the scaffolded CODEOWNERS.** The template CODEOWNERS starts with `* <owners>`, which makes an owner the code owner of every file. With "Require review from Code Owners" on, the bot then cannot merge any PR without an owner approving it, so `autonomous` mode would not merge anything on its own. That is the safe default for `propose`. If you move a lane to `autonomous`, narrow the catch-all line yourself, in an owner-reviewed PR, and keep the protected-path lines. `doctor` only samples the protected paths for CODEOWNERS coverage, so it will pass either way; this is a decision for you, not something `doctor` checks.
 
-> **Solo owner.** GitHub does not let you approve your own PR. If you are the only owner, you cannot satisfy "1 approval from a code owner" on PRs you author. The usual workaround is to put yourself (your user or the Admin role) on the bypass list. `doctor` will WARN `branch.bypass` ("bypass actors are configured; confirm the lane's bot identity is not among them"). That warning is expected for this setup; the thing to check is that the list contains you and not the App. A second owner avoids the issue.
+> **Solo owner.** GitHub does not let you approve your own PR. If you are the only owner, you cannot satisfy "1 approval from a code owner" on PRs you author. The usual workaround is to put yourself (your user or the Admin role) on the bypass list of a ruleset, or `bypass_pull_request_allowances` in classic protection (example under Option B). `doctor` will WARN `branch.bypass` ("bypass actors are configured; confirm the lane's bot identity is not among them"). That warning is expected for this setup; the thing to check is that the list contains you and not the App. A second owner avoids the issue.
 
 ## Option A: a repository ruleset (recommended)
 
@@ -55,7 +57,7 @@ gh api --method POST repos/OWNER/REPO/rulesets --input - <<'JSON'
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "laneguard-guard / check" }
+          { "context": "laneguard-guard / check", "integration_id": 15368 }
         ]
       } }
   ]
@@ -63,14 +65,21 @@ gh api --method POST repos/OWNER/REPO/rulesets --input - <<'JSON'
 JSON
 ```
 
-For an `autonomous` lane, add `{ "context": "laneguard-review" }` to `required_status_checks`. The status only exists once a lane has posted it on some commit; GitHub may not offer it in the UI picker until then, but a ruleset created through the API accepts the context name.
+`integration_id: 15368` is the GitHub Actions app. Without it, GitHub accepts a status with the context `laneguard-guard / check` from **any** app that can post statuses on the repository, including the lane's own App (it has commit-status write so it can post `laneguard-review`). A lane process could then post a passing `laneguard-guard / check` itself and the real checker would never need to run. Pinning the check to Actions closes that. `laneguard-review` is deliberately not pinned: it is posted by the lane's App, not by Actions, and pinning it to Actions would make it unsatisfiable.
+
+For an `autonomous` lane, add `{ "context": "laneguard-review" }` and your project CI check (`{ "context": "validate", "integration_id": 15368 }` if `init --ci` wrote the CI workflow; otherwise whatever your CI job is named) to `required_status_checks`, and set `strict_required_status_checks_policy` to `true` so the checks must have run against an up-to-date branch. The `laneguard-review` status only exists once a lane has posted it on some commit; GitHub may not offer it in the UI picker until then, but a ruleset created through the API accepts the context name.
 
 ## Option B: classic branch protection
 
 ```bash
 gh api --method PUT repos/OWNER/REPO/branches/main/protection --input - <<'JSON'
 {
-  "required_status_checks": { "strict": false, "contexts": ["laneguard-guard / check"] },
+  "required_status_checks": {
+    "strict": false,
+    "checks": [
+      { "context": "laneguard-guard / check", "app_id": 15368 }
+    ]
+  },
   "enforce_admins": true,
   "required_pull_request_reviews": {
     "required_approving_review_count": 1,
@@ -84,11 +93,26 @@ gh api --method PUT repos/OWNER/REPO/branches/main/protection --input - <<'JSON'
 JSON
 ```
 
-Replace `main` with your default branch. Add `"laneguard-review"` to `contexts` for an `autonomous` lane. Classic protection can only be read by `doctor` with enough rights on the repository; if it cannot read it, the check is reported as skipped. Prefer a ruleset.
+Replace `main` with your default branch. `checks` with `app_id: 15368` pins the context to GitHub Actions for the same reason as `integration_id` in the ruleset; the older `contexts` list accepts the status from any app. For an `autonomous` lane add `{ "context": "laneguard-review" }` (no `app_id`: the lane's App posts it) and your CI check (`{ "context": "validate", "app_id": 15368 }`), and set `"strict": true`.
+
+Solo owner on classic protection: add a `bypass_pull_request_allowances` entry inside `required_pull_request_reviews` naming yourself, never the App:
+
+```json
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "require_code_owner_reviews": true,
+    "dismiss_stale_reviews": true,
+    "bypass_pull_request_allowances": { "users": ["your-login"], "teams": [], "apps": [] }
+  },
+```
+
+Classic protection can only be read by `doctor` with enough rights on the repository; if it cannot read it, the check is reported as skipped. Prefer a ruleset.
 
 ## Confirm the check name
 
-`doctor` and this page expect the required check to be named exactly `laneguard-guard / check` (workflow `laneguard-guard`, job `check`). Open a pull request on the repository once the guard workflow is in place, then look at the check as GitHub lists it in the ruleset's check picker. If GitHub shows a different name (for example only the job name), a required check with the wrong name will never be satisfied and PRs will wait forever, or `doctor` will report `branch.required-checks` as failed even though a check is set. If that happens, please open an issue: the constant in `guard/doctor.py` and these docs need to agree with what GitHub records.
+`doctor` and this page expect the required check to be named exactly `laneguard-guard / check`. That string is the job's `name:` in the scaffolded `.github/workflows/laneguard-guard.yml` (the job id is `check`; the template sets `name: laneguard-guard / check` on it explicitly). GitHub records a required check by the job's display name, so the context is whatever that `name:` line says, not "workflow / job" composed by GitHub. If you rename the job, the required check can never be satisfied, PRs will wait forever, and `doctor` will report `branch.required-checks` as failed even though a check is set. The workflow is a protected path, so a lane cannot rename it; an owner can, so do not.
+
+Open a pull request on the repository once the guard workflow is in place, then look at the check as GitHub lists it in the ruleset's check picker and confirm it matches. If it does not, please open an issue: the constant in `guard/doctor.py`, the template and these docs need to agree with what GitHub records.
 
 ## Protect the `laneguard-data` branch
 
@@ -144,5 +168,6 @@ Things `doctor` does **not** check, so you must:
 
 - the `laneguard-data` ruleset above (it reads rules for the default branch only);
 - that the bypass list contains you and not the App when the API returns bypass details only on a per-ruleset request (the list endpoint may omit them; check the ruleset in the UI);
-- that the required-check name matches what GitHub actually records;
+- that the required-check name matches what GitHub actually records, and that the check is pinned to the GitHub Actions app (`doctor` reads the context name only);
+- that your project CI check is required for `autonomous` lanes;
 - repository-level settings such as "Allow auto-merge", merge methods, and who has write or admin access.
