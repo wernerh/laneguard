@@ -1,0 +1,33 @@
+# Laneguard lane "{{LANE}}" (vendored: the engine lives in .claude/). Protected: owners only. Runs as the GitHub App bot identity, never an owner.
+name: laneguard-lane-{{LANE}}
+on:
+  schedule:
+    - cron: "{{CRON}}"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: laneguard-{{LANE}}
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: {{RUN_MAX_MINUTES}}
+    steps:
+      - uses: actions/create-github-app-token@{{APP_TOKEN_SHA}}
+        id: app
+        with:
+          app-id: ${{ vars.LANEGUARD_APP_ID }}
+          private-key: ${{ secrets.LANEGUARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@{{CHECKOUT_SHA}}
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - uses: anthropics/claude-code-action@{{CLAUDE_ACTION_SHA}}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app.outputs.token }}
+          prompt: "/laneguard-run {{LANE}}"
+          claude_args: --max-turns 60

@@ -4,7 +4,7 @@ Laneguard is a governance layer for agents that can change a repository, so secu
 
 ## Project status
 
-Laneguard is **pre-alpha**. The design and subagent definitions exist; the guard scripts and commands are not implemented yet. There are no supported releases. At this stage the most valuable reports concern the **design**: a way to defeat a stated guarantee, a flaw in the lock or approval model, or an injection route the threat model misses.
+Laneguard is **pre-alpha**. The design, subagent definitions, guard scripts and scaffold exist and have unit tests, but lane runs have not been exercised end to end against live GitHub, and there are no supported releases. The most valuable reports concern the **design and the guard scripts**: a way to defeat a stated guarantee, a flaw in the lock or approval model, or an injection route the threat model misses. The current model and its known limits are in [docs/security-model.md](docs/security-model.md).
 
 ## Reporting a vulnerability
 
@@ -31,6 +31,12 @@ Reports are handled on a best-effort basis by a single maintainer. You can expec
 - Weaknesses in `lock.py`, `check.py`, `doctor`, the CI templates or the agent definitions, once they exist.
 - Over-broad permissions requested by the GitHub App or the templates.
 - Secret exposure through reports, run history or logs.
+
+## Scope notes
+
+- The guarantees are the ones in the README "Security" section and [docs/security-model.md](docs/security-model.md). Limits listed there under "Known limits" (permission scoping is not a sandbox; the reviewer verdict is posted by the lane's own token, so its independence is model and context separation, not identity; heuristic detectors have documented misses) are known and documented. A report that shows one is worse than documented, or that finds an undocumented one, is welcome.
+- Useful reports include a failing test, a diff that `check.py` should have rejected and did not, a way for a lane to reach a protected path, win a lock race or forge an approval, or a place where `doctor` reports PASS while a guarantee is not in place.
+- Reports about the setup documents in `docs/setup/` (for example a permission that is broader than needed) are in scope.
 
 ## Out of scope
 

@@ -1,9 +1,11 @@
 ---
-description: Remove the plugin dependency by vendoring the skills into the repo (not built yet in the 0.1 preview)
+description: Stop depending on the plugin by vendoring skills, agents and commands into .claude/ (owner-reviewed PR)
+argument-hint: ""
 ---
 
-`/laneguard:eject` is planned but not built in this preview.
+Eject from the plugin. This writes `.claude/**` and lane workflows, which are protected paths, so it is owner-only and always ends in a PR for review.
 
-When built, it vendors the skills into `.claude/` and removes the engine pin, as an owner-reviewed PR. Vendoring writes to protected paths, so it can only ever be proposed to the owner, never applied by a lane.
-
-Do not copy skills or agents into the repository or touch `.claude/`. Tell the owner this and stop.
+1. Confirm the person is an owner and that this is an interactive session.
+2. Explain what changes: skills, agents and commands are copied into `.claude/` (commands become `/laneguard-<name>`); lane workflows stop checking out the pinned engine; `.laneguard/plugin.lock` stays as provenance with `vendored: true` (it still records a full SHA); you will no longer receive engine updates except by re-vendoring.
+3. Dry run: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/eject.py" --engine-sha <sha>` where `<sha>` is the engine commit (`git -C "${CLAUDE_PLUGIN_ROOT}" rev-parse HEAD`).
+4. After the owner agrees: branch `laneguard-eject`, re-run with `--apply`, run `python3 .laneguard/guard/doctor.py --offline`, commit, push, open a PR with `forge.py write pr`. Never merge it.

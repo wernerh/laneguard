@@ -11,8 +11,8 @@
   A Claude Code plugin that turns an idea into an approved design, then runs scheduled, gated agents ("lanes") that open pull requests for you, while enforcing the limits <i>outside the prompt</i>.
 </p>
 
-> **Status: pre-alpha, design complete, guard scripts not started.**
-> What exists today: the [design spec](docs/design-spec.md), ten [subagent definitions](agents/), seven [skills](skills/), nine [commands](commands/), the plugin and marketplace manifests, and the logo. You can [install the preview](#install-the-preview) and try the design pipeline and dry runs. The guard scripts (`lock.py`, `check.py`, `forge.py`), the scaffold and `init`/`doctor` are **planned**, so real lane runs are not available yet. Usage examples below show the intended behaviour and are marked as such. Do not run this against a repository you care about yet. See the [roadmap](#roadmap).
+> **Status: pre-alpha. The design is complete and the engine scripts exist; lane runs have not been exercised end to end against live GitHub.**
+> What exists today: the [design spec](docs/design-spec.md), ten [subagent definitions](agents/), seven [skills](skills/), nine [commands](commands/), the plugin and marketplace manifests, the logo, and the engine scripts: the guard scripts in [`guard/`](guard/) (`lock.py`, `check.py`, `forge.py`, `history.py`, `allowlist.py`, `doctor.py`), the scaffold generator [`scripts/init.py`](scripts/init.py) and the [`templates/`](templates/) it renders. Their unit tests pass. Wiring the slash commands to those scripts is still being finished, and nothing has been run against a live GitHub repository as part of a full lane run, so the guarantees below are tested against fakes and local git, not proven in use. Usage examples below show the intended behaviour and are marked as such. Do not run this against a repository you care about yet. See the [roadmap](#roadmap).
 
 ---
 
@@ -26,6 +26,7 @@
 - [Configuration](#configuration)
 - [Agents](#agents)
 - [Security](#security)
+- [Documentation](#documentation)
 - [How it compares](#how-it-compares)
 - [Roadmap](#roadmap)
 - [Repository layout](#repository-layout)
@@ -95,15 +96,15 @@ This repository is its own Claude Code marketplace:
 | The ten subagents (`laneguard:architect`, `laneguard:triager`, and so on) | Available |
 | `/laneguard:new "<idea>"` | Works: intake, spec and plan, with owner approval at each stage |
 | `/laneguard:run <lane> --dry-run` | Works: pause check, observer, triager and gatekeeper only; writes nothing |
-| `/laneguard:status`, `/laneguard:pause`, `/laneguard:resume` | Work on whatever `.laneguard/` files exist |
-| `/laneguard:init`, `doctor`, `migrate`, `eject` | Placeholders that explain what is missing and stop |
-| `/laneguard:run <lane>` without `--dry-run` | Refuses until the guard scripts exist |
+| `/laneguard:init`, `doctor`, `migrate`, `eject` | Wired to `scripts/init.py`, `guard/doctor.py`, `scripts/migrate.py`, `scripts/eject.py`; scripts are unit tested, not yet used on a live repository |
+| `/laneguard:status`, `/laneguard:pause`, `/laneguard:resume` | Wired to `history.py` and `lock.py` (pause flags live on the `laneguard-data` branch) |
+| `/laneguard:run <lane>` without `--dry-run` | Wired to `lock.py`, `forge.py`, `history.py` and `doctor.py`; **lane runs have not been exercised end to end against live GitHub** |
 
-Until the guard scripts land, the guarantees in [Security](#security) are design intent. In the preview, owner approval in the design pipeline is an in-session confirmation, recorded in the document; the GitHub `/approve` flow arrives with `forge.py`.
+The engine scripts exist and their tests pass, but the guarantees in [Security](#security) have not been verified against a live repository, so read them as tested design, not a track record. In the design pipeline, owner approval before `init` is an in-session confirmation recorded in the document as unverified; once a project is initialised the GitHub `/approve` flow in `forge.py` is used instead. It is unit tested, not yet used in a live run.
 
-## Quick start (planned)
+## Quick start
 
-> The commands in this section describe the intended full experience. `init` and `doctor` are not built yet; see [Install the preview](#install-the-preview) for what works today.
+> The commands are wired to the scripts, but nothing here has run against a live repository yet; see [Install the preview](#install-the-preview) and the [quickstart](docs/setup/quickstart.md).
 
 ```text
 # 1. Add the marketplace and install the plugin
@@ -331,7 +332,7 @@ Laneguard is a governance layer for agents that can change your repository. Read
 
 ### Recommended repository setup
 
-1. **Create a dedicated GitHub App** for lanes. Grant only: contents (read and write), pull requests (read and write), issues (read and write). Do **not** grant: workflows, administration, secrets, environments, or organisation permissions. Never use a personal access token.
+1. **Create a dedicated GitHub App** for lanes. Grant only: contents (read and write), pull requests (read and write), issues (read and write), commit statuses (read and write; it posts the reviewer verdict). Step-by-step: [GitHub App setup](docs/setup/github-app.md). Do **not** grant: workflows, administration, secrets, environments, or organisation permissions. Never use a personal access token.
 2. **Branch protection or a ruleset on your default branch:**
    - require a pull request and the `laneguard-guard` check (plus the reviewer check);
    - require CODEOWNERS review;
@@ -356,11 +357,21 @@ Laneguard is a governance layer for agents that can change your repository. Read
 - **Everything outside the repository** that the agent's environment can reach. Keep that environment small.
 - **Model behaviour in general.** The design assumes models can be fooled and limits the damage rather than preventing the attempt.
 
-These guarantees are design intent today. They become real when the guard scripts exist, `doctor` can verify them, and the public conformance and injection test results are published (see the [roadmap](#roadmap)). Until then, treat this as a specification and a threat model, not a product.
+The guard scripts and `doctor` now exist and have unit tests, but the guarantees have not been proven end to end against live GitHub, and no public conformance or injection results are published yet (see the [roadmap](#roadmap)). Treat this as a specification, a threat model and a tested set of guard scripts, not a finished product. The [security model](docs/security-model.md) maps each threat to its mechanism and test, and lists known limits.
 
 ### Reporting a vulnerability
 
 Please report privately through the repository's **Security** tab ("Report a vulnerability"), not in a public issue. See [SECURITY.md](SECURITY.md).
+
+## Documentation
+
+- [Quickstart](docs/setup/quickstart.md): install, `init` flags, `doctor`, the adoption ladder, how to go back
+- [GitHub App setup](docs/setup/github-app.md): the lane's bot identity, permissions and secrets
+- [Branch protection](docs/setup/branch-protection.md): exact rules, protecting `laneguard-data`, what `doctor` verifies
+- [Scheduler](docs/setup/scheduler.md): GitHub Actions cron, drift, concurrency and timeouts
+- [Security model](docs/security-model.md): threats mapped to mechanisms and tests, and known limits
+- [Design spec](docs/design-spec.md), [Changelog](CHANGELOG.md), [Contributing](CONTRIBUTING.md), [Security policy](SECURITY.md)
+- [Launch drafts](docs/launch/README.md): drafts for the owner to review (not posted)
 
 ## How it compares
 
@@ -384,17 +395,18 @@ No surveyed project combined named scheduled lanes, a shared atomic lock and mec
 - [x] Logo and brand assets
 - [x] Plugin manifest and marketplace entry (installable preview)
 - [x] Skills: `intake`, `spec`, `plan`, `core`, and the three lane skills
-- [x] Commands: `new`, `run` (dry run), `status`, `pause`, `resume`; placeholders for `init`, `doctor`, `migrate`, `eject`
+- [x] Commands: `new`, `run`, `status`, `pause`, `resume`, `init`, `doctor`, `migrate`, `eject`, wired to the scripts
 
 **Next (in order)**
-- [ ] `lock.py` with concurrency tests (N racers, stale takeover, heartbeat)
-- [ ] `check.py` with protected-path, weakened-check and secret fixtures
-- [ ] `forge.py` (GitHub adapter, approval verification)
-- [ ] `init.sh` and the scaffold templates; real `init` and `doctor`
-- [ ] Real (non-dry-run) lane runs
-- [ ] Eval suite and injection corpus; publish results
+- [x] `lock.py` with concurrency tests (N racers, stale takeover, heartbeat)
+- [x] `check.py` with protected-path, weakened-check and secret fixtures
+- [x] `forge.py` (GitHub adapter, approval verification), `history.py`, `allowlist.py`
+- [x] `init.sh` / `init.py`, the scaffold templates and `doctor.py` (scripts and unit tests)
+- [x] `migrate.py`, `eject.py`, static dashboard, offline eval harness and injection corpus (mechanical tests only)
+- [ ] Real (non-dry-run) lane runs, exercised end to end against live GitHub
+- [ ] Live eval runs against fixture repos; publish results (none exist yet)
 - [ ] Public example project with recorded runs
-- [ ] `migrate`, `eject`, dashboard
+
 
 Open decisions (name checks, licence, default scheduler, reviewer model default) are tracked in [§16 of the spec](docs/design-spec.md).
 
@@ -412,7 +424,7 @@ Open decisions (name checks, licence, default scheduler, reviewer model default)
     └── design-spec.md   the full design
 ```
 
-The target layout (guard scripts, templates, evals) is in §3 of the spec.
+Also present: `guard/` (engine scripts and tests), `scripts/` (init, migrate, eject), `dashboard/`, `templates/` (scaffold), `evals/` and `examples/`. The full target layout is in §3 of the spec.
 
 ## Contributing
 

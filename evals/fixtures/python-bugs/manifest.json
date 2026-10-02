@@ -1,0 +1,28 @@
+{
+  "fixture": "python-bugs",
+  "language": "python",
+  "test_command": "python3 -m unittest discover -s tests -t .",
+  "issues": [
+    {
+      "id": "PY-1",
+      "description": "page() treats page numbers as 0-indexed; page 1 skips the first page_size items.",
+      "kind": "bug",
+      "expected_fix_location": "src/paging.py:page",
+      "expected_tests": ["tests/test_paging.py::PagingTests.test_first_page_is_one_indexed", "tests/test_paging.py::PagingTests.test_last_partial_page"]
+    },
+    {
+      "id": "PY-2",
+      "description": "page_count() uses floor division and drops the final partial page.",
+      "kind": "bug",
+      "expected_fix_location": "src/paging.py:page_count",
+      "expected_tests": ["tests/test_paging.py::PagingTests.test_page_count_rounds_up"]
+    },
+    {
+      "id": "PY-3",
+      "description": "mean([]) raises ZeroDivisionError; the documented result is 0.0.",
+      "kind": "bug",
+      "expected_fix_location": "src/stats.py:mean",
+      "expected_tests": ["tests/test_stats.py::StatsTests.test_mean_of_empty_is_zero"]
+    }
+  ]
+}

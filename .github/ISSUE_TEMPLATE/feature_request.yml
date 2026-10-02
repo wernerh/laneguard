@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a change or addition. Not for security vulnerabilities (see SECURITY.md).
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Laneguard's rule is that a guarantee must name the mechanism that enforces it outside the model. A request that asks the agent to "be careful" will be asked how it is enforced.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: enforcement
+    attributes:
+      label: How would it be enforced and tested
+      description: Token scope, allowlist, branch protection, `check.py`, a test. If it only works because a prompt says so, say that.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Does this touch a protected path or weaken a guarantee?
+      options:
+        - label: It changes guard scripts, workflows, allowlist, config templates or agent files (these get extra review)
+        - label: It loosens a limit, gate or check (needs a clear justification)

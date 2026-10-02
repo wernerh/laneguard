@@ -5,9 +5,9 @@ argument-hint: "[lane]"
 
 Resume Laneguard. Argument (optional lane name): $ARGUMENTS
 
-Removing a pause flag is a protected-path change and is owner-only.
+Removing a pause flag is owner-only, and a lane never removes its own.
 
-1. Refuse if this is a scheduled or unattended run, or if no owner is present in this session. A lane never removes its own pause flag.
-2. Identify the person: `gh api user --jq .login`. It must match a login in `owners:` in `.laneguard/config.yaml`. If the config is missing or the login does not match, stop and say why.
-3. Show which flags exist (`.laneguard/PAUSED`, `.laneguard/PAUSED.<lane>`) and the reason recorded in each. If a lane was paused by its circuit breaker, say what tripped it and ask the owner to confirm they have looked at the `needs-human` issue.
-4. After the owner confirms, delete the named flag(s) in the working tree. Do not commit, push or open a PR yourself. Tell the owner to commit the removal through their own branch protection, because the checker only accepts this change from an owner login.
+1. Refuse in scheduled or unattended runs, or when no owner is present.
+2. Show what is paused and why: `python3 .laneguard/guard/history.py status --no-trip`. If the circuit breaker paused a lane, say what tripped it and ask the owner to confirm they have read the `needs-human` issue.
+3. After the owner confirms, run `python3 .laneguard/guard/history.py unpause [--lane <lane>]`. It verifies through the forge that the caller is a configured owner and a real person (not a bot); if it refuses, report that and stop. Do not try another route.
+4. Also check for owner-set flags in the working tree (`.laneguard/PAUSED*`); removing those is a protected-path change the owner commits through branch protection, so tell them rather than doing it.

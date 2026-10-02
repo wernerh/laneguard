@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in Laneguard does not behave as documented. Not for security vulnerabilities (see SECURITY.md).
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Laneguard is pre-alpha. Before filing, please check the README status section.
+        **Do not post secrets, tokens or private keys.** If this is a way to bypass a guarantee, report it privately instead (see SECURITY.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - guard script (check, lock, forge, history, allowlist, doctor)
+        - init / scaffold templates
+        - workflow templates
+        - command or skill
+        - agent definition
+        - docs
+        - evals
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps or command to reproduce
+      description: Exact command, flags and relevant config (remove secrets). A failing test is ideal.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Laneguard version or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version (for guard scripts)
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Output of `doctor.py`, `check.py` or the failing step. Redact anything sensitive.
+      render: text

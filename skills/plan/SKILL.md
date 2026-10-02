@@ -27,7 +27,7 @@ Stage 3 of 3. Input: approved `PRODUCT.md`, `ARCHITECTURE.md` and ADRs. Output: 
 
 ## Approval
 
-Explicit `/approve plan` from a login in `owners:`, verified through `.laneguard/guard/forge.py` when it exists. In the preview, in-session owner confirmation counts and is recorded at the end of `docs/WORKPLAN.md` as `Approved by <login> on <date> (in-session, preview)`. Without approval, stop. Do not create issues.
+Explicit `/approve plan` from a login in `owners:`. Once the project is initialised, post the artifact on a tracking issue and verify with `python3 .laneguard/guard/forge.py approvals --target issue --number N --gate plan` (listed owner, real person, comment never edited). Before init there is no repository config or guard to verify against, so the owner confirming in this interactive session counts; record it at the end of `docs/WORKPLAN.md` as `Approved by <login> on <date> (in-session, unverified)`. Without approval, stop. Do not create issues.
 
 ## Rules
 

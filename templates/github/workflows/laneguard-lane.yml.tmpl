@@ -1,0 +1,45 @@
+# Laneguard lane "{{LANE}}". Protected: owners only. Runs as the GitHub App bot identity, never an owner.
+name: laneguard-lane-{{LANE}}
+on:
+  schedule:
+    - cron: "{{CRON}}"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: laneguard-{{LANE}}
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: {{RUN_MAX_MINUTES}}
+    steps:
+      - uses: actions/create-github-app-token@{{APP_TOKEN_SHA}}
+        id: app
+        with:
+          app-id: ${{ vars.LANEGUARD_APP_ID }}
+          private-key: ${{ secrets.LANEGUARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@{{CHECKOUT_SHA}}
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - name: Read the pinned engine commit
+        id: pin
+        run: |
+          sha="$(grep '^sha:' .laneguard/plugin.lock | head -1 | awk '{print $2}')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@{{CHECKOUT_SHA}}
+        with:
+          repository: {{ENGINE_REPO}}
+          ref: ${{ steps.pin.outputs.sha }}
+          path: laneguard-engine
+          persist-credentials: false
+      - uses: anthropics/claude-code-action@{{CLAUDE_ACTION_SHA}}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_PLUGIN_ROOT: ${{ github.workspace }}/laneguard-engine
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app.outputs.token }}
+          prompt: "/laneguard:run {{LANE}}"
+          claude_args: --plugin-dir ${{ github.workspace }}/laneguard-engine --max-turns 60

@@ -266,8 +266,8 @@ Each lane run is orchestrated by the lane's main agent (driven by the lane skill
 |---|---|---|---|---|
 | `architect` | design | docs write only | strongest | Brief to 2-3 approaches, `PRODUCT.md`, `ARCHITECTURE.md`, ADR drafts |
 | `planner` | design | docs write only | strongest | Spec to phased `WORKPLAN.md`, gates, testable acceptance criteria, next-phase issue drafts |
-| `observer` | run: observe | read-only | fastest | Survey repo, PRs, CI, claims, decisions; ranked candidate tasks; flags suspicious content |
-| `triager` | run: diagnose | read-only | mid | **Injection firewall.** Converts the chosen untrusted issue into a structured task brief; acceptance criteria come from the approved plan only |
+| `observer` | run: observe | read-only (Bash only to call `forge.py read`) | fastest | Survey repo, PRs, CI, claims, decisions; ranked candidate tasks; flags suspicious content |
+| `triager` | run: diagnose | read-only (Bash only to call `forge.py`) | mid | **Injection firewall.** Converts the chosen untrusted issue into a structured task brief; acceptance criteria come from the approved plan only |
 | `gatekeeper` | run: plan | read-only | mid | Checks the brief against the human gates and protected paths; PASS or BLOCK; blocks when unsure |
 | `implementer` | run: implement | the only writer | mid | One major task on a lane-prefixed branch, inside owned paths; never touches protected paths or weakens checks |
 | `validator` | run: validate | read-only plus configured validation commands | fastest | Runs lint, test and build once, reports faithfully, never retries until green |

@@ -1,13 +1,15 @@
 ---
-description: Check that the guarantees are actually enforced (not built yet in the 0.1 preview)
+description: Check that the guarantees are actually enforced (config, pin, guard hashes, CODEOWNERS, allowlist, workflows, branch protection)
+argument-hint: "[--offline] [--strict] [--as owner|lane]"
 ---
 
-`/laneguard:doctor` is planned but not built in this preview.
+Run the doctor. Arguments: $ARGUMENTS
 
-Do not claim any guarantee is verified. Without the guard scripts and scaffold there is nothing for `doctor` to verify, and a made-up pass would be worse than no check.
+Run `python3 .laneguard/guard/doctor.py $ARGUMENTS --engine-root "${CLAUDE_PLUGIN_ROOT}"` (add `--json` if you need to parse it) and report exactly what it printed: each check's status and detail, then the summary line. Do not soften or reinterpret a FAIL, and never describe a SKIP as a pass.
 
-Tell the owner what `doctor` will check when built, from the design spec: token scopes and the bot identity, branch protection and required checks, CODEOWNERS, the tool allowlist in `.claude/settings.json`, scheduler wiring, and a warning when the implementer and reviewer use the same model. Lanes will refuse to run in `autonomous` mode until it passes.
+- A FAIL means a guarantee is not enforced. List the fix for each from `docs/setup/` (branch protection, GitHub App) or by re-running init/migrate.
+- A SKIP means it could not be checked, usually the online checks without a token that can read branch protection. Say which and how to run it with the right token.
+- Run as the person (an owner token) to read branch protection; run with `--as lane` and the lane's bot token to verify the bot has no admin or maintain rights. A single run cannot do both, so say which one this was.
+- If `.laneguard/guard/doctor.py` does not exist, the project is not initialised: point to `/laneguard:init`.
 
-If the owner wants to check one of these by hand today, offer to read the relevant settings with `gh` and report exactly what you see, labelled as a manual look and not as a `doctor` result.
-
-Then stop.
+This command only reads.
