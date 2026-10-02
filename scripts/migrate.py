@@ -5,13 +5,15 @@ It never touches files the project owns (CLAUDE.md, PROJECT_STATE.md, ROADMAP.md
 state, decisions, CODEOWNERS, lane notes, ci.yml). Engine-managed files are updated only if the project
 has not edited them since init (hash in ``.laneguard/scaffold.version`` still matches); locally edited
 files are reported as conflicts and left alone unless ``--overwrite-conflicts`` is given. A locally edited
-guard script is always reported loudly: doctor will keep failing on it until an owner resolves it.
+guard script is always reported loudly: doctor will keep failing on it until an owner resolves it, and
+``--apply`` is refused outright (nothing is written) so ``.laneguard/guard/`` never ends up mixed-version.
+An ejected project (``vendored: true`` in plugin.lock) is refused too: re-run /laneguard:eject instead.
 
 This writes to protected paths, so it only ever runs as an owner action and its result is a PR for owner
 review (the /laneguard:migrate command does the branch, commit and PR). Never auto-merged.
 
 Usage: migrate.py --engine-sha SHA [--target DIR] [--plugin-root DIR] [--apply] [--overwrite-conflicts] [--json]
-Without --apply it is a dry run. Exit: 0 ok / nothing to do, 1 conflicts remain, 2 error.
+Without --apply it is a dry run. Exit: 0 ok / nothing to do, 1 conflicts remain (or --apply refused), 2 error.
 """
 from __future__ import annotations
 
@@ -51,11 +53,21 @@ def read_manifest(target: Path) -> dict:
     return meta, dict(meta.get("files") or {})
 
 
+def is_vendored(target: Path) -> bool:
+    lock = target / ".laneguard/plugin.lock"
+    return bool((laneconfig.loads(lock.read_text()) or {}).get("vendored")) if lock.exists() else False
+
+
+def guard_conflicts(plan: dict) -> list:
+    return [r for r in plan["conflicts"] if r.startswith(".laneguard/guard/")]
+
+
 def plan_migration(target: Path, plugin_root: Path, engine_sha: str, overwrite_conflicts=False) -> dict:
     meta, recorded = read_manifest(target)
-    vendored = bool((laneconfig.loads((target / ".laneguard/plugin.lock").read_text()) or {}).get("vendored")) \
-        if (target / ".laneguard/plugin.lock").exists() else False
-    a = ini.args_from_project(target, engine_sha, vendored=vendored)
+    if is_vendored(target):
+        raise ini.InitError("this project is ejected (plugin.lock says vendored: true); migrate does not manage the "
+                            "vendored .claude/ files, so re-run /laneguard:eject with the new engine SHA instead")
+    a = ini.args_from_project(target, engine_sha, vendored=False)
     new_plan = {rel: text for rel, text, _ in ini.build_plan(a, plugin_root)}
     updates, adds, removes, conflicts, unchanged = [], [], [], [], []
     new_hashes = dict(recorded)
@@ -105,11 +117,19 @@ def changelog(plan: dict) -> str:
     if plan["conflicts"]:
         out += ["## Not changed: edited locally since init (resolve by hand or re-run with --overwrite-conflicts)"]
         out += [f"- `{r}`" for r in plan["conflicts"]] + [""]
+    if guard_conflicts(plan):
+        out += ["A guard script is in conflict: `--apply` is refused until it is resolved, so `.laneguard/guard/` "
+                "is never left mixed-version.", ""]
     out += ["Review the diff, then run `python3 .laneguard/guard/doctor.py` on the branch."]
     return "\n".join(out) + "\n"
 
 
 def apply(plan: dict, target: Path) -> None:
+    """Write the planned files. Refuses (writes nothing) while a guard script is in conflict."""
+    bad = guard_conflicts(plan)
+    if bad:
+        raise ini.InitError("refusing to apply: guard script(s) edited locally would leave .laneguard/guard/ "
+                            "mixed-version: " + ", ".join(bad) + "; resolve by hand or re-run with --overwrite-conflicts")
     for rel, text in plan["_texts"].items():
         dest = target / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -130,16 +150,26 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     try:
         plan = plan_migration(Path(a.target), Path(a.plugin_root), a.engine_sha, a.overwrite_conflicts)
-        if a.apply:
-            apply(plan, Path(a.target))
     except (ini.InitError, laneconfig.YamlError, OSError) as e:
         print(f"migrate error: {e}", file=sys.stderr)
         return 2
+    applied, refused = False, ""
+    if a.apply:
+        try:
+            apply(plan, Path(a.target))
+            applied = True
+        except ini.InitError as e:
+            refused = str(e)
+        except OSError as e:
+            print(f"migrate error: {e}", file=sys.stderr)
+            return 2
     public = {k: v for k, v in plan.items() if not k.startswith("_")}
     if a.json:
-        print(json.dumps({**public, "applied": a.apply}, indent=2))
+        print(json.dumps({**public, "applied": applied, "refused": refused}, indent=2))
     else:
         print(changelog(plan))
+    if refused:
+        print(f"migrate: {refused}", file=sys.stderr)
     return 1 if plan["conflicts"] else 0
 
 

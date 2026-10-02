@@ -63,9 +63,11 @@ PROFILE_LANES = {
     "full": ["dev", "security", "design"],
 }
 DEFAULT_LANES = {
-    "dev": {"label": "laneguard", "schedule": "every 2h", "owns": ["PROJECT_STATE.md"], "mode": "propose"},
-    "security": {"label": "laneguard-security", "schedule": "every 4h", "owns": ["docs/security/"], "mode": "propose"},
-    "design": {"label": "laneguard-design", "schedule": "every 4h", "owns": ["docs/design/"], "mode": "propose"},
+    # No per-lane "mode" here: a lane without an explicit mode inherits the project mode,
+    # so lowering the project to `observe` lowers every lane (issue #5).
+    "dev": {"label": "laneguard", "schedule": "every 2h", "owns": ["PROJECT_STATE.md"]},
+    "security": {"label": "laneguard-security", "schedule": "every 4h", "owns": ["docs/security/"]},
+    "design": {"label": "laneguard-design", "schedule": "every 4h", "owns": ["docs/design/"]},
 }
 # Universal human gates (spec section 9). Projects may add (extra_gates), never remove.
 BASE_GATES = [

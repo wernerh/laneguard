@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "guard"))
 import init as ini  # noqa: E402
 import doctor as dr  # noqa: E402
+import laneconfig as lc  # noqa: E402
 
 SHA = "c" * 40
 
@@ -50,9 +51,33 @@ class InitTests(unittest.TestCase):
 
     def test_starts_in_propose_and_pins_sha(self):
         run_init(self.t)
-        self.assertIn("mode: propose", (self.t / ".laneguard/config.yaml").read_text())
-        self.assertNotIn("autonomous", (self.t / ".laneguard/config.yaml").read_text())
+        text = (self.t / ".laneguard/config.yaml").read_text()
+        self.assertIn("\nmode: propose\n", text)
+        self.assertNotIn("autonomous", text)
         self.assertIn(f"sha: {SHA}", (self.t / ".laneguard/plugin.lock").read_text())
+        cfg = lc._merge_defaults(lc.loads(text))
+        self.assertEqual({lane["mode"] for lane in cfg["lanes"].values()}, {"propose"})
+
+    def test_lane_lines_carry_no_mode(self):
+        run_init(self.t, profile="full")
+        for line in (self.t / ".laneguard/config.yaml").read_text().splitlines():
+            if line.startswith("  ") and "label:" in line:
+                self.assertNotIn("mode:", line, line)
+
+    # Issue #5, second half: laneconfig.DEFAULT_LANES must not carry a mode either, or _merge_defaults
+    # still forces propose. Remove "mode": "propose" from DEFAULT_LANES in guard/laneconfig.py and this activates.
+    @unittest.skipIf("mode" in lc.DEFAULT_LANES["dev"], "guard/laneconfig.py DEFAULT_LANES still forces a lane mode (issue #5)")
+    def test_lanes_inherit_project_mode(self):
+        run_init(self.t, profile="full")
+        path = self.t / ".laneguard/config.yaml"
+        for line in path.read_text().splitlines():
+            if line.startswith("  ") and "label:" in line:
+                self.assertNotIn("mode:", line, line)
+        lowered = path.read_text().replace("\nmode: propose\n", "\nmode: observe\n")
+        cfg = lc._merge_defaults(lc.loads(lowered))
+        self.assertEqual(lc.validate(cfg), [])
+        self.assertEqual(len(cfg["lanes"]), 3)
+        self.assertEqual({lane["mode"] for lane in cfg["lanes"].values()}, {"observe"})
 
     def test_all_actions_are_sha_pinned(self):
         run_init(self.t, "--ci", "node", profile="full")
@@ -67,6 +92,42 @@ class InitTests(unittest.TestCase):
         self.assertEqual((self.t / "CLAUDE.md").read_text(), "mine")
         run_init(self.t, "--force")
         self.assertNotEqual((self.t / "CLAUDE.md").read_text(), "mine")
+
+    def test_rerun_on_initialised_project_is_refused_without_force(self):
+        self.assertEqual(run_init(self.t), 0)
+        (self.t / ".laneguard/guard/check.py").write_text("# edited\n")
+        before = {p: p.read_text() for p in self.t.rglob("*") if p.is_file()}
+        self.assertEqual(run_init(self.t, "--run-max-minutes", "20"), 2)
+        self.assertEqual(before, {p: p.read_text() for p in self.t.rglob("*") if p.is_file()})
+        self.assertEqual(run_init(self.t, "--dry-run"), 2)
+        self.assertEqual(run_init(self.t, "--force"), 0)
+        self.assertNotIn("# edited", (self.t / ".laneguard/guard/check.py").read_text())
+        self.assertEqual([c.detail for c in self.doctor().values() if c.status == dr.FAIL], [])
+
+    def test_rerun_error_points_at_migrate(self):
+        run_init(self.t)
+        import io, contextlib
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            run_init(self.t)
+        self.assertIn("/laneguard:migrate", err.getvalue())
+        self.assertIn("--force", err.getvalue())
+
+    def test_short_run_max_derives_a_valid_heartbeat(self):
+        self.assertEqual(run_init(self.t, "--run-max-minutes", "3"), 0)
+        cfg = lc._merge_defaults(lc.load_file(self.t / ".laneguard/config.yaml"))
+        self.assertEqual(lc.validate(cfg), [])
+        lim = cfg["limits"]
+        self.assertEqual((lim["run_max_minutes"], lim["lock_ttl_minutes"], lim["heartbeat_minutes"]), (3, 18, 9))
+        self.assertEqual([c.detail for c in self.doctor().values() if c.status == dr.FAIL], [])
+
+    def test_heartbeat_derivation(self):
+        self.assertEqual(ini.heartbeat_for(45), 10)
+        self.assertEqual(ini.heartbeat_for(20), 10)
+        self.assertEqual(ini.heartbeat_for(16), 8)
+        self.assertEqual(ini.heartbeat_for(1), 1)
+        run_init(self.t)
+        self.assertIn("heartbeat_minutes: 10", (self.t / ".laneguard/config.yaml").read_text())
 
     def test_bad_inputs_are_refused(self):
         self.assertEqual(ini.main(["--project", "d", "--repo", "acme/demo", "--owner", "a", "--engine-sha", "main", "--target", str(self.t)]), 2)
