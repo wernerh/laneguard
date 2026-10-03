@@ -10,7 +10,7 @@ Stage 1 of 3 in the design pipeline (intake, spec, plan). The output is `docs/BR
 ## Preconditions
 
 - You are in the target repository.
-- `.laneguard/config.yaml` may not exist yet (it does not exist until `/laneguard:init` has run). If it is missing, take the owner's GitHub login from `gh api user --jq .login` and say which login you are treating as the owner.
+- `.laneguard/config.yaml` may not exist yet (it does not exist until `/laneguard:init` has run). If it is missing, take the owner's GitHub login from `gh api user --jq .login` and say which login you are treating as the owner. Intake runs before `/laneguard:init` in the owner's own interactive session, with the owner's own credentials, which is why `gh` is acceptable here and never in a lane run (lanes use only `.laneguard/guard/forge.py`).
 - This stage is interactive. If you are running unattended (a scheduled run, no owner present), stop and report that intake needs the owner.
 
 ## Process

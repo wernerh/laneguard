@@ -87,7 +87,10 @@ def generate(cfg: dict) -> dict:
     for pre in branch_prefixes(cfg):
         allow.append(f"Bash(git push origin {pre}*)")
         allow.append(f"Bash(git push -u origin {pre}*)")
-    for script in ("forge.py", "lock.py", "history.py", "check.py", "doctor.py"):
+    # forge_read.py is the read-only face of forge.py for the observer, triager and validator. The allowlist is
+    # project-wide, so forge.py (writes) stays granted for the orchestrator; the split is enforced by the agent
+    # prompts plus evals/conformance/check_agents.py, and visible in logs and hooks because the scripts differ.
+    for script in ("forge.py", "forge_read.py", "lock.py", "history.py", "check.py", "doctor.py"):
         allow.append(f"Bash(python3 {GUARD}/{script}:*)")
     allow += ["Bash(ls:*)", "Bash(wc:*)", "Bash(pwd)"]
 

@@ -1,0 +1,35 @@
+# Laneguard dashboard (optional, vendored: the builder lives in .laneguard/dashboard/). Protected: owners only.
+# Builds a static status page from the laneguard-data branch and uploads it as a workflow artifact.
+# It publishes nothing anywhere.
+name: laneguard-dashboard
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: laneguard-dashboard
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@{{CHECKOUT_SHA}}
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build the dashboard
+        run: |
+          python3 .laneguard/dashboard/build.py \
+            --from-git . \
+            --branch laneguard-data \
+            --config .laneguard/config.yaml \
+            --out site/index.html
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: laneguard-dashboard
+          path: site/index.html
+          if-no-files-found: error
+          retention-days: 14

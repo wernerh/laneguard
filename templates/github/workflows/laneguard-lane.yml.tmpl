@@ -47,4 +47,4 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ steps.app.outputs.token }}
           prompt: "/laneguard:run {{LANE}}"
-          claude_args: --plugin-dir ${{ github.workspace }}/laneguard-engine --max-turns 60
+          claude_args: --plugin-dir ${{ github.workspace }}/laneguard-engine --max-turns {{MAX_TURNS}}

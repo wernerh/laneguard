@@ -36,3 +36,4 @@ If nothing qualifies, the run is quiet: report that and stop.
 - Never touch CI, branch protection, CODEOWNERS, token scopes or tool allowlists. Those are protected paths: a need to change them is a `needs-human` issue.
 - Rotating a credential, changing cloud or identity-provider settings, or disclosing a vulnerability to anyone outside the project are owner gates. Stop and open a `needs-human` issue.
 - Do not publish exploit details in public issues or PR text. Describe the weakness and the fix at the level a maintainer needs.
+- `needs-human` issues are opened by the orchestrator only, within `budgets.max_issues_created_per_day`; the implementer never opens one, it reports `NEEDS_ISSUE: <one line>` (never containing a secret value) and the orchestrator decides.
