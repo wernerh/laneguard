@@ -31,7 +31,7 @@ If nothing qualifies, the run is quiet: report that and stop.
 
 ## Lane-specific rules
 
-- The project's design system and tokens are the source of truth. Do not invent new visual direction; if the task needs a decision about brand, palette or typography, that is an owner decision. Open a `needs-human` issue.
+- The project's design system and tokens are the source of truth. Do not invent new visual direction; if the task needs a decision about brand, palette or typography, that is an owner decision: the orchestrator opens a `needs-human` issue (the implementer never opens issues; it reports `NEEDS_ISSUE: <one line>`).
 - Do not add third-party fonts, assets or services that carry licence or cost implications without an owner gate.
 - Changes must keep accessibility requirements from the spec (contrast, keyboard use, labels). The reviewer checks these explicitly.
 - Do not change application logic in a design task. If the design fix needs it, say so in the report.

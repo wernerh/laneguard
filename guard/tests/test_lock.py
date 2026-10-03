@@ -250,6 +250,50 @@ class StaleTests(LockTestCase):
         self.assertTrue(b.status()["alarm"])
 
 
+class TokenTests(LockTestCase):
+    """Issue #15: a checkout with persist-credentials: false can still read the lock on a private repo."""
+
+    def test_with_token_rewrites_only_github_https(self):
+        self.assertEqual(lock.with_token("https://github.com/acme/demo.git", "tok"),
+                         "https://x-access-token:tok@github.com/acme/demo.git")
+        self.assertEqual(lock.with_token("https://github.com/acme/demo", "tok"),
+                         "https://x-access-token:tok@github.com/acme/demo")
+        for url in ("git@github.com:acme/demo.git", "ssh://git@github.com/acme/demo.git",
+                    "https://gitlab.com/acme/demo.git", "https://user:pw@github.com/acme/demo.git",
+                    "http://github.com/acme/demo.git", "/tmp/remote.git", "origin"):
+            self.assertEqual(lock.with_token(url, "tok"), url, url)
+        self.assertEqual(lock.with_token("https://github.com/acme/demo.git", ""), "https://github.com/acme/demo.git")
+        self.assertEqual(lock.with_token("https://github.com/acme/demo.git", None), "https://github.com/acme/demo.git")
+
+    def test_ls_remote_uses_token_only_for_github_https_remote(self):
+        import os
+        from unittest import mock
+        d = self.clone("a")
+        store = lock.LockStore(d, clock=self.clock)
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "tok"}):
+            self.assertEqual(store._ls_remote_target(), "origin")  # a file remote: nothing to rewrite
+            git("remote", "set-url", "origin", "https://github.com/acme/demo.git", cwd=d)
+            self.assertEqual(store._ls_remote_target(), "https://x-access-token:tok@github.com/acme/demo.git")
+            self.assertEqual(lock.LockStore(d, remote="https://github.com/acme/demo.git", clock=self.clock)._ls_remote_target(),
+                             "https://x-access-token:tok@github.com/acme/demo.git")
+            self.assertEqual(lock.LockStore(d, remote="nope", clock=self.clock)._ls_remote_target(), "nope")
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GH_TOKEN", None)
+            self.assertEqual(store._ls_remote_target(), "origin")
+
+    def test_ls_remote_failure_never_echoes_the_token(self):
+        import os
+        from unittest import mock
+        d = self.clone("a")
+        git("remote", "set-url", "origin", str(self.root / "missing.git"), cwd=d)
+        store = lock.LockStore(d, clock=self.clock)
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "s3cret"}):
+            with self.assertRaises(lock.LockError) as cm:
+                store.status()
+        self.assertNotIn("s3cret", str(cm.exception))
+        self.assertIn("ls-remote origin", str(cm.exception))
+
+
 class ClockSkewTests(LockTestCase):
     def test_no_wall_clock_is_read_by_lock_py(self):
         src = (Path(lock.__file__)).read_text()

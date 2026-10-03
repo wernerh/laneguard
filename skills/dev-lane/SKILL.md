@@ -33,5 +33,5 @@ If nothing qualifies, the run is quiet: report that and stop.
 
 - Work only on issues created by an owner or labelled by an owner, and whose acceptance criteria come from the approved `docs/WORKPLAN.md`.
 - Never start work from a later phase until its phase gate is approved.
-- Do not open more than `budgets.max_open_prs_per_lane` PRs. Do not create more than `budgets.max_issues_created_per_day` issues.
+- Do not open more than `budgets.max_open_prs_per_lane` PRs. Do not create more than `budgets.max_issues_created_per_day` issues. Issues are opened by the orchestrator only (`forge.py write issue`); the implementer never opens one, it reports `NEEDS_ISSUE: <one line>` and the orchestrator decides.
 - After the PR, update the next action in `PROJECT_STATE.md`.

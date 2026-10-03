@@ -67,6 +67,19 @@ class ForgeClock(Clock):
         return self._forge.now()
 
 
+def with_token(url: str, token: Optional[str]) -> str:
+    """Rewrite an ``https://github.com/...`` remote URL to carry TOKEN as an x-access-token credential.
+
+    Anything else (ssh URLs, other hosts, a URL that already carries credentials, an empty token) is returned
+    unchanged. Used only for the read-only ``ls-remote`` so a checkout made with ``persist-credentials: false``
+    (the guard workflow) can still read the lock on a private repository.
+    """
+    prefix = "https://github.com/"
+    if not token or not url.startswith(prefix):
+        return url
+    return f"https://x-access-token:{token}@github.com/" + url[len(prefix):]
+
+
 def fmt(t: dt.datetime) -> str:
     return t.astimezone(dt.timezone.utc).strftime(ISO)
 
@@ -143,8 +156,25 @@ class LockStore:
             raise LockError(f"git {' '.join(args[:2])} failed: {p.stderr.strip() or p.stdout.strip()}")
         return p
 
+    def _ls_remote_target(self) -> str:
+        """The remote to query: its URL with GH_TOKEN applied when that helps, otherwise the remote name as given."""
+        token = os.environ.get("GH_TOKEN")
+        if not token:
+            return self.remote
+        url = self.remote
+        if "://" not in url and ":" not in url:  # a remote name, not a URL
+            p = self._git("remote", "get-url", self.remote, check=False)
+            if p.returncode != 0:
+                return self.remote
+            url = p.stdout.strip()
+        tokenised = with_token(url, token)
+        return tokenised if tokenised != url else self.remote
+
     def _remote_sha(self) -> Optional[str]:
-        p = self._git("ls-remote", self.remote, self.ref)
+        # check=False and a hand-built error: the target may carry a token that must never reach a message
+        p = self._git("ls-remote", self._ls_remote_target(), self.ref, check=False)
+        if p.returncode != 0:
+            raise LockError(f"git ls-remote {self.remote} failed: {p.stderr.strip() or p.stdout.strip()}")
         for line in p.stdout.splitlines():
             sha, _, name = line.partition("\t")
             if name.strip() == self.ref:

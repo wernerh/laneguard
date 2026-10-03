@@ -136,6 +136,111 @@ class InitTests(unittest.TestCase):
         self.assertEqual(ini.main(["--project", "d", "--repo", "a/b", "--engine-sha", SHA, "--target", str(self.t)]), 2)
         self.assertEqual(ini.main(["--project", "d", "--repo", "a/b", "--owner", "a", "--approvals", "2", "--engine-sha", SHA, "--target", str(self.t)]), 2)
 
+    def test_engine_repo_is_validated_like_repo(self):
+        """Issue #15: --engine-repo lands unquoted in workflow YAML."""
+        for bad in ("nope", "a/b/c", "acme/demo\n  evil: yes", "a b/c", ""):
+            with self.subTest(bad=bad):
+                self.setUp()
+                self.assertEqual(run_init(self.t, "--engine-repo", bad), 2)
+                self.assertFalse((self.t / ".laneguard").exists())
+        self.assertEqual(run_init(self.t, "--engine-repo", "fork-org/lane.guard_x"), 0)
+        self.assertIn("repository: fork-org/lane.guard_x", (self.t / ".github/workflows/laneguard-lane-dev.yml").read_text())
+        self.assertIn("repo: fork-org/lane.guard_x", (self.t / ".laneguard/plugin.lock").read_text())
+
+    def test_project_name_is_quoted_in_config(self):
+        """Issue #15: --project is free text and must not be able to inject YAML."""
+        name = 'Demo: "the" app\\ #1'
+        self.assertEqual(ini.main(["--project", name, "--repo", "acme/demo", "--owner", "alice", "--engine-sha", SHA,
+                                   "--target", str(self.t)]), 0)
+        text = (self.t / ".laneguard/config.yaml").read_text()
+        self.assertIn('project: "Demo: \\"the\\" app\\\\ #1"\n', text)
+        cfg = lc._merge_defaults(lc.loads(text))
+        self.assertEqual(cfg["project"], name)
+        self.assertEqual(lc.validate(cfg), [])
+        self.assertIn(f"# {name}: project rules", (self.t / "CLAUDE.md").read_text())  # markdown keeps the bare form
+        self.assertEqual([c.detail for c in self.doctor().values() if c.status == dr.FAIL], [])
+        # eject/migrate rebuild init's inputs from the parsed config: the name must round-trip unchanged
+        a = ini.args_from_project(self.t, SHA)
+        self.assertEqual(a.project, name)
+        rebuilt = dict(ini.plan_to_map(ini.build_plan(a, ROOT)))[".laneguard/config.yaml"]
+        self.assertEqual(rebuilt, text)
+
+    def test_max_turns_lands_in_config_and_workflows(self):
+        """Issue #15: one value for budgets.per_run.max_turns and the workflows' --max-turns."""
+        self.assertEqual(run_init(self.t, profile="full"), 0)
+        cfg = lc._merge_defaults(lc.load_file(self.t / ".laneguard/config.yaml"))
+        self.assertEqual(cfg["budgets"]["per_run"]["max_turns"], lc.DEFAULT_BUDGETS["per_run"]["max_turns"])
+        for wf in (self.t / ".github/workflows").glob("laneguard-lane-*.yml"):
+            self.assertIn("--max-turns 60", wf.read_text(), wf.name)
+        self.assertEqual(run_init(self.t, "--max-turns", "25", "--force", profile="full"), 0)
+        cfg = lc._merge_defaults(lc.load_file(self.t / ".laneguard/config.yaml"))
+        self.assertEqual(cfg["budgets"]["per_run"]["max_turns"], 25)
+        for wf in (self.t / ".github/workflows").glob("laneguard-lane-*.yml"):
+            self.assertIn("--max-turns 25", wf.read_text(), wf.name)
+            self.assertNotIn("--max-turns 60", wf.read_text(), wf.name)
+        self.assertEqual([c.detail for c in self.doctor().values() if c.status == dr.FAIL], [])
+        self.assertEqual(ini.args_from_project(self.t, SHA).max_turns, 25)
+        self.assertEqual(run_init(self.t, "--max-turns", "0", "--force"), 2)
+        # editing the config without the workflow (or the reverse) is caught by doctor
+        path = self.t / ".laneguard/config.yaml"
+        path.write_text(path.read_text().replace("max_turns: 25", "max_turns: 40"))
+        self.assertIn("--max-turns is 25, config budgets.per_run.max_turns is 40", self.doctor()["workflows"].detail)
+
+    def test_ci_templates_do_not_persist_credentials_and_install_conditionally(self):
+        """Issue #15: CI checkouts keep no token, and installs tolerate a repo without a manifest."""
+        for ci, needle in (("python", "if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi"),
+                           ("node", "if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci; else npm install; fi"),
+                           ("generic", None)):
+            with self.subTest(ci=ci):
+                self.setUp()
+                self.assertEqual(run_init(self.t, "--ci", ci), 0)
+                text = (self.t / ".github/workflows/ci.yml").read_text()
+                self.assertIn("persist-credentials: false", text)
+                self.assertNotIn("|| true", text)
+                if needle:
+                    self.assertIn(needle, text)
+
+    def test_guard_workflow_falls_back_to_head_checker_on_bootstrap(self):
+        """Issue #15: the bootstrap PR has no .laneguard/guard on the base; the step must not fail."""
+        run_init(self.t)
+        text = (self.t / ".github/workflows/laneguard-guard.yml").read_text()
+        self.assertIn('git cat-file -e "$BASE_SHA:.laneguard/guard/check.py"', text)
+        self.assertIn("bootstrap", text)
+        self.assertIn("persist-credentials: false", text)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", text)
+        # exercise the step's shell in a real repo: base has no guard, head adds one
+        import subprocess
+        step = text.split("run: |", 1)[1].split("- name: Run check.py")[0]
+        script = "\n".join(line[10:] if line.startswith(" " * 10) else line for line in step.splitlines())
+        repo = self.t / "repo"
+        repo.mkdir()
+        g = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True, text=True)
+        g("init", "-q"); g("config", "user.email", "t@t"); g("config", "user.name", "t")
+        (repo / "README").write_text("x\n")
+        g("add", "."); g("commit", "-qm", "base")
+        base = g("rev-parse", "HEAD").stdout.strip()
+        (repo / ".laneguard/guard").mkdir(parents=True)
+        (repo / ".laneguard/guard/check.py").write_text("print('head checker')\n")
+        g("add", "."); g("commit", "-qm", "bootstrap")
+        tmp = self.t / "runner"
+        tmp.mkdir()
+        p = subprocess.run(["bash", "-e", "-c", script], cwd=str(repo), capture_output=True, text=True,
+                           env={"PATH": "/usr/bin:/bin", "BASE_SHA": base, "RUNNER_TEMP": str(tmp)})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("::notice::", p.stdout)
+        self.assertEqual((tmp / "trusted/.laneguard/guard/check.py").read_text(), "print('head checker')\n")
+        # and with a guard on the base, the base copy wins silently
+        (repo / ".laneguard/guard/check.py").write_text("print('weakened')\n")
+        g("add", "."); g("commit", "-qm", "weaken")
+        base = g("rev-parse", "HEAD~1").stdout.strip()
+        tmp2 = self.t / "runner2"
+        tmp2.mkdir()
+        p = subprocess.run(["bash", "-e", "-c", script], cwd=str(repo), capture_output=True, text=True,
+                           env={"PATH": "/usr/bin:/bin", "BASE_SHA": base, "RUNNER_TEMP": str(tmp2)})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("::notice::", p.stdout)
+        self.assertEqual((tmp2 / "trusted/.laneguard/guard/check.py").read_text(), "print('head checker')\n")
+
     def test_tampering_after_init_is_caught(self):
         run_init(self.t)
         (self.t / ".laneguard/guard/check.py").write_text("# weakened\n")

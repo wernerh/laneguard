@@ -387,6 +387,7 @@ class Doctor:
         if guard and not re.search(r"\bpull_request\b", guard):
             problems.append("laneguard-guard.yml does not trigger on pull_request")
         run_max = self.cfg["limits"]["run_max_minutes"]
+        max_turns = int((self.cfg["budgets"].get("per_run") or {}).get("max_turns", 0) or 0)
         for lane in self.cfg["lanes"]:
             text = files.get(f"laneguard-lane-{lane}.yml")
             if not text:
@@ -400,6 +401,12 @@ class Doctor:
                 problems.append(f"laneguard-lane-{lane}.yml has no timeout-minutes")
             elif int(m.group(1)) != run_max:
                 problems.append(f"laneguard-lane-{lane}.yml timeout-minutes is {m.group(1)}, config limits.run_max_minutes is {run_max}")
+            # the turn budget is enforced by the workflow's --max-turns, so it must be the configured one
+            m = re.search(r"--max-turns[\s=]+(\d+)", text)
+            if not m:
+                problems.append(f"laneguard-lane-{lane}.yml does not pass --max-turns")
+            elif max_turns and int(m.group(1)) != max_turns:
+                problems.append(f"laneguard-lane-{lane}.yml --max-turns is {m.group(1)}, config budgets.per_run.max_turns is {max_turns}")
             if "concurrency:" not in text:
                 problems.append(f"laneguard-lane-{lane}.yml has no concurrency group")
         if problems:
@@ -407,7 +414,7 @@ class Doctor:
         elif notes:
             self.add(Check("workflows", WARN, "; ".join(notes), critical=False))
         else:
-            self.add(Check("workflows", PASS, f"{len(files)} Laneguard workflow(s): actions pinned to SHAs, minimal permissions, timeouts match config"))
+            self.add(Check("workflows", PASS, f"{len(files)} Laneguard workflow(s): actions pinned to SHAs, minimal permissions, timeouts and turn budgets match config"))
         if self.cfg["scheduler"].get("adapter") != "github-actions":
             self.add(Check("scheduler", WARN, f"scheduler adapter is '{self.cfg['scheduler'].get('adapter')}'; "
                            "doctor can only verify GitHub Actions wiring, so check the schedule by hand", critical=False))
