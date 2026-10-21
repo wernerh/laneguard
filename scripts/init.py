@@ -30,9 +30,14 @@ ACTION_SHAS = {
     "SETUP_PYTHON_SHA": "0b93645e9fea7318ecaed2b359559ac225c90a2b",   # actions/setup-python v5.3.0
     "APP_TOKEN_SHA": "fee1f7d63c2ff003460e3d139729b119787bc349",      # actions/create-github-app-token v2.2.2
     "CLAUDE_ACTION_SHA": "97c53473391bff1901034d4b454b5bac7ab7a029",  # anthropics/claude-code-action v1
+    # TODO: record the exact tag this SHA corresponds to
 }
 PLACEHOLDER = re.compile(r"(?<!\$)\{\{([A-Z][A-Z0-9_]*)\}\}")
-GUARD_FILES = ("laneconfig.py", "lock.py", "forge.py", "check.py", "allowlist.py", "doctor.py", "history.py")
+REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+DEFAULT_MAX_TURNS = laneconfig.DEFAULT_BUDGETS["per_run"]["max_turns"]
+# Dashboard files vendored into .laneguard/dashboard/ by eject (build.py finds ../guard from there).
+DASHBOARD_FILES = ("build.py", "template.html")
+GUARD_FILES = ("laneconfig.py", "lock.py", "forge.py", "forge_read.py", "check.py", "allowlist.py", "doctor.py", "history.py")
 CI_TEMPLATES = {"generic": "ci.generic.yml.tmpl", "node": "ci.node.yml.tmpl", "python": "ci.python.yml.tmpl"}
 
 
@@ -108,7 +113,8 @@ def args_from_project(target: Path, engine_sha: str, engine_repo=None, vendored=
         approvals=cfg["approvals_required"], validation_lint=v.get("lint", ""), validation_test=v.get("test", ""),
         validation_build=v.get("build", ""), ci="none", engine_sha=engine_sha,
         engine_repo=engine_repo or lock.get("repo") or "wernerh/laneguard",
-        run_max_minutes=cfg["limits"]["run_max_minutes"], vendored=vendored,
+        run_max_minutes=cfg["limits"]["run_max_minutes"], max_turns=cfg["budgets"]["per_run"]["max_turns"],
+        vendored=vendored,
         dashboard=(target / ".github/workflows/laneguard-dashboard.yml").exists() if dashboard is None else dashboard)
 
 
@@ -122,13 +128,19 @@ def build_plan(a, plugin_root: Path) -> list:
         raise InitError("--approvals cannot exceed the number of owners")
     if any(o.endswith("[bot]") for o in owners):
         raise InitError("a bot identity cannot be an owner")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", a.repo):
+    if not REPO_RE.fullmatch(a.repo):
         raise InitError("--repo must look like owner/name")
+    # --engine-repo is interpolated unquoted into workflow YAML (`repository:`), so it gets the same shape check
+    if not REPO_RE.fullmatch(a.engine_repo):
+        raise InitError("--engine-repo must look like owner/name")
     if not laneconfig.is_full_sha(a.engine_sha):
         raise InitError("--engine-sha must be a full 40-character commit SHA")
     run_max = a.run_max_minutes
     if run_max < 1:
         raise InitError("--run-max-minutes must be at least 1")
+    max_turns = int(getattr(a, "max_turns", DEFAULT_MAX_TURNS))
+    if max_turns < 1:
+        raise InitError("--max-turns must be at least 1")
     lock_ttl = run_max + 15
     lane_lines = []
     for i, lane in enumerate(lanes):
@@ -137,7 +149,8 @@ def build_plan(a, plugin_root: Path) -> list:
         # no per-lane mode: lanes inherit the project mode so lowering it in config.yaml takes effect (issue #5)
         lane_lines.append(f'  {lane}: {{ label: {d["label"]}, schedule: {yq(d["schedule"])}, owns: [{owns}] }}')
     base = {
-        "PROJECT": a.project, "REPO": a.repo, "PROFILE": a.profile,
+        # PROJECT is free text: PROJECT_YAML is the quoted form for config.yaml, PROJECT the bare form for Markdown
+        "PROJECT": a.project, "PROJECT_YAML": yq(a.project), "REPO": a.repo, "PROFILE": a.profile,
         "OWNERS_YAML": "[" + ", ".join(owners) + "]",
         "OWNERS_LIST": ", ".join(owners),
         "OWNERS_CODEOWNERS": " ".join("@" + o for o in owners),
@@ -148,6 +161,7 @@ def build_plan(a, plugin_root: Path) -> list:
         "VALIDATION_TEST_OR_TRUE": a.validation_test or "true",
         "VALIDATION_BUILD_OR_TRUE": a.validation_build or "true",
         "RUN_MAX_MINUTES": run_max, "LOCK_TTL_MINUTES": lock_ttl, "HEARTBEAT_MINUTES": heartbeat_for(lock_ttl),
+        "MAX_TURNS": max_turns,
         "ENGINE_VERSION": engine_version(plugin_root), "ENGINE_REPO": a.engine_repo,
         **ACTION_SHAS,
     }
@@ -182,7 +196,16 @@ def build_plan(a, plugin_root: Path) -> list:
         lane_tpl = "laneguard-lane.vendored.yml.tmpl" if getattr(a, "vendored", False) else "laneguard-lane.yml.tmpl"
         plan.append((f".github/workflows/laneguard-lane-{lane}.yml", tpl("github/workflows/" + lane_tpl, extra), "template"))
     if getattr(a, "dashboard", False):
-        plan.append((".github/workflows/laneguard-dashboard.yml", tpl("github/workflows/laneguard-dashboard.yml.tmpl"), "template"))
+        if getattr(a, "vendored", False):
+            # after eject there is no engine checkout: the builder is vendored next to the guard scripts
+            plan.append((".github/workflows/laneguard-dashboard.yml", tpl("github/workflows/laneguard-dashboard.vendored.yml.tmpl"), "template"))
+            for name in DASHBOARD_FILES:
+                src = plugin_root / "dashboard" / name
+                if not src.is_file():
+                    raise InitError(f"dashboard file missing in the engine: {name}")
+                plan.append((f".laneguard/dashboard/{name}", src.read_text(encoding="utf-8"), "vendored"))
+        else:
+            plan.append((".github/workflows/laneguard-dashboard.yml", tpl("github/workflows/laneguard-dashboard.yml.tmpl"), "template"))
     if a.ci != "none":
         plan.append((".github/workflows/ci.yml", tpl("ci/" + CI_TEMPLATES[a.ci]), "template"))
     for name in GUARD_FILES:
@@ -235,6 +258,8 @@ def main(argv=None) -> int:
     ap.add_argument("--engine-repo", default="wernerh/laneguard")
     ap.add_argument("--dashboard", action="store_true", help="also add the optional dashboard workflow")
     ap.add_argument("--run-max-minutes", type=int, default=30)
+    ap.add_argument("--max-turns", type=int, default=DEFAULT_MAX_TURNS,
+                    help="per-run turn budget, written to config budgets.per_run.max_turns and the lane workflows' --max-turns")
     ap.add_argument("--plugin-root", default=str(ROOT))
     ap.add_argument("--target", default=".")
     ap.add_argument("--force", action="store_true")

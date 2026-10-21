@@ -43,7 +43,7 @@ All timings derive from the `limits` block of `.laneguard/config.yaml`:
 | `limits.run_max_minutes` | 30 | The workflow's `timeout-minutes`. `doctor` fails the `workflows` check if they differ |
 | `limits.lock_ttl_minutes` | 45 (run max + 15) | Must be greater than `run_max_minutes`; config validation enforces this |
 | `limits.heartbeat_minutes` | 10 | At most half of `lock_ttl_minutes`; config validation enforces this |
-| `budgets.per_run.max_turns` | 60 | The `--max-turns` value in `claude_args` of the workflow. The template hardcodes 60, and `doctor` does **not** compare them. If you change one, change the other in an owner-reviewed PR |
+| `budgets.per_run.max_turns` | 60 | The `--max-turns` value in `claude_args` of the workflow. `init --max-turns N` writes both, and `doctor` fails when they differ. If you change one, change the other in the same owner-reviewed PR |
 | workflow `concurrency.group` | `laneguard-<lane>`, `cancel-in-progress: false` | `doctor` fails the `workflows` check if the group is missing |
 
 The concurrency group serialises runs of the **same lane**: GitHub keeps at most one running and one pending job per group, and `cancel-in-progress: false` means a new run waits instead of killing a live one. It does not coordinate different lanes; that is the job of the git-ref lock (`lock.py`), which is also what protects against a run started by a different scheduler.

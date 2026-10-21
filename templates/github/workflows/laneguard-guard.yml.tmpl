@@ -23,7 +23,15 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           mkdir -p "$RUNNER_TEMP/trusted"
-          git archive "$BASE_SHA" .laneguard/guard | tar -x -C "$RUNNER_TEMP/trusted"
+          if git cat-file -e "$BASE_SHA:.laneguard/guard/check.py" 2>/dev/null; then
+            git archive "$BASE_SHA" .laneguard/guard | tar -x -C "$RUNNER_TEMP/trusted"
+          else
+            # Bootstrap PR: the base branch has no guard yet, so the only checker is the one this PR adds.
+            # check.py itself detects the missing base config and runs secret scanning only; an owner must review.
+            echo "::notice::no .laneguard/guard/check.py on the base commit (bootstrap PR): using the checker from this PR's head"
+            mkdir -p "$RUNNER_TEMP/trusted/.laneguard"
+            cp -R .laneguard/guard "$RUNNER_TEMP/trusted/.laneguard/guard"
+          fi
       - name: Run check.py
         env:
           GH_TOKEN: ${{ github.token }}

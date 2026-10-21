@@ -1,5 +1,5 @@
 # Laneguard configuration. Protected: only an owner may change this file.
-project: {{PROJECT}}
+project: {{PROJECT_YAML}}
 repo: {{REPO}}
 owners: {{OWNERS_YAML}}
 approvals_required: {{APPROVALS_REQUIRED}}
@@ -21,7 +21,7 @@ limits:
   claim_expiry_hours: 24
 
 budgets:
-  per_run: { max_turns: 60, max_tokens: 2000000 }
+  per_run: { max_turns: {{MAX_TURNS}}, max_tokens: 2000000 }
   monthly_cost_ceiling_usd: 200
   max_open_prs_per_lane: 2
   max_issues_created_per_day: 5

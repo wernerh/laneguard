@@ -50,6 +50,16 @@ SPEC = {
 }
 # Agents that read raw issue/PR/comment text must say it is untrusted data.
 STRICT_UNTRUSTED = {"observer", "triager"}
+# Issue #6 helper: a read-only agent may say "never call `forge.py`" but must not direct the model to use it.
+# Negated clauses are stripped first, then any remaining mention of forge.py (not forge_read.py) is a defect.
+FORGE_NEGATED_RE = re.compile(r"(?i)\b(never|not|no)\b[^\n.;]{0,40}`?forge\.py`?")
+FORGE_ANY_RE = re.compile(r"(?<![_\w])forge\.py\b")
+
+
+def forge_write_mentions(body: str) -> list:
+    return list(FORGE_ANY_RE.finditer(FORGE_NEGATED_RE.sub("", body)))
+
+
 STRICT_RE = re.compile(r"(?i)\bdata,? not instructions?\b|\buntrusted\b")
 # Everyone else only has to show awareness: untrusted/data-not-instructions, a rule not to follow or act on
 # embedded text, that raw issue text is withheld, or that its input is the derived task brief or an
@@ -129,6 +139,11 @@ def check(agents_dir: Path) -> list:
                 bad(name, "docs-write agent has no Write tool")
             if name != "implementer" and "Edit" in tools:
                 bad(name, "only the implementer may have Edit (spec: one writer)")
+            if spec["access"] == "read-only" and "Bash" in tools:
+                # Issue #6: the allowlist is project-wide, so the read/write split of the forge is held by the
+                # prompts. A read-only agent may name forge_read.py; directing the model to forge.py is a defect.
+                if forge_write_mentions(body):
+                    bad(name, "read-only agent directs the model to forge.py; it must use forge_read.py (issue #6)")
         if "Task" in tools or "Agent" in tools:
             bad(name, "subagents must not spawn agents (spec rule 3)")
         rx = STRICT_RE if name in STRICT_UNTRUSTED else LOOSE_RE

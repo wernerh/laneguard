@@ -61,6 +61,7 @@ class GenerateTests(unittest.TestCase):
     def test_github_goes_through_the_adapter_only(self):
         s = al.generate(cfg())["permissions"]
         self.assertIn("Bash(python3 .laneguard/guard/forge.py:*)", s["allow"])
+        self.assertIn("Bash(python3 .laneguard/guard/forge_read.py:*)", s["allow"])  # issue #6
         self.assertIn("Bash(gh:*)", s["deny"])
 
     def test_no_allow_rule_is_also_denied(self):

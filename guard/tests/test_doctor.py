@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@%s
-      - run: claude -p "/laneguard:run dev"
+      - run: claude -p "/laneguard:run dev" --max-turns 60
 """ % SHA
 CODEOWNERS = """* @alice
 /.laneguard/ @alice
@@ -188,6 +188,18 @@ class OfflineTests(Base):
     def test_timeout_must_match_config(self):
         r = self._wf(LANE_WF.replace("timeout-minutes: 30", "timeout-minutes: 90"))
         self.assertIn("timeout-minutes", r.detail)
+
+    def test_max_turns_must_match_config(self):
+        """Issue #15: the workflow's --max-turns is what enforces budgets.per_run.max_turns."""
+        r = self._wf(LANE_WF.replace("--max-turns 60", "--max-turns 200"))
+        self.assertEqual(r.status, dr.FAIL)
+        self.assertIn("--max-turns is 200, config budgets.per_run.max_turns is 60", r.detail)
+        r = self._wf(LANE_WF.replace(" --max-turns 60", ""))
+        self.assertEqual(r.status, dr.FAIL)
+        self.assertIn("does not pass --max-turns", r.detail)
+        (self.root / ".laneguard" / "config.yaml").write_text(CONFIG + "budgets:\n  per_run: { max_turns: 200 }\n")
+        r = self._wf(LANE_WF.replace("--max-turns 60", "--max-turns 200"))
+        self.assertNotEqual(r.status, dr.FAIL, r.detail)
 
     def test_missing_lane_workflow_fails(self):
         (self.root / ".github" / "workflows" / "laneguard-lane-dev.yml").unlink()

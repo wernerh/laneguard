@@ -21,4 +21,4 @@ Produce the plan the dev lane will execute, and the acceptance criteria the revi
 - Write only docs and issue drafts. Do not open issues yourself; the pipeline does so after the owner approves the plan.
 - Keep issues small enough for one lane run (one major task plus up to two small related ones).
 - Flag any item needing a human gate (spend, cloud resources, deploys, external contact) and put it in its own issue labelled `needs-human`.
-- Acceptance criteria are the contract. Vague criteria ("works well") must be rewritten or the item returned as `NEEDS_CRITERIA`.
+- Acceptance criteria are the contract. Vague criteria ("works well") must be rewritten or the item returned as `MISSING_CRITERIA` (distinct from the triager's run-time `NEEDS_CRITERIA`, which means the approved plan has no criteria for an existing issue).

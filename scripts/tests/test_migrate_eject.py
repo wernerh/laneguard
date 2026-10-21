@@ -123,6 +123,61 @@ class EjectTests(Base):
         self.assertEqual([c.detail for c in res.values() if c.status == dr.FAIL], [])
         self.assertEqual(res["reviewers"].status, dr.PASS)
 
+    def test_eject_leaves_no_plugin_root_reference_behind(self):
+        """Issue #15: init/migrate/eject need the plugin checkout, doctor must not ask for --engine-root."""
+        ej.main(["--engine-sha", OLD, "--target", str(self.proj), "--apply"])
+        cmds = sorted(p.name for p in (self.proj / ".claude/commands").glob("*.md"))
+        for name in ("laneguard-init.md", "laneguard-migrate.md", "laneguard-eject.md"):
+            self.assertNotIn(name, cmds)
+        self.assertIn("laneguard-doctor.md", cmds)
+        doc = (self.proj / ".claude/commands/laneguard-doctor.md").read_text()
+        self.assertNotIn("--engine-root", doc)
+        self.assertIn("python3 .laneguard/guard/doctor.py $ARGUMENTS`", doc)
+        for p in (self.proj / ".claude").rglob("*.md"):
+            self.assertNotIn("CLAUDE_PLUGIN_ROOT", p.read_text(), p)
+        # the commands/*.md left out are named in the changelog and the json plan
+        plan = ej.plan_eject(self.proj, ROOT, OLD)
+        self.assertEqual(plan["not_vendored"], ["commands/eject.md", "commands/init.md", "commands/migrate.md"])
+        log = ej.changelog(plan)
+        self.assertIn("## Not vendored", log)
+        self.assertIn("`commands/init.md`", log)
+        self.assertIn("--engine-root", log)
+        self.assertEqual(dr.main(["--root", str(self.proj), "--offline"]), 0)  # no --engine-root, no CLAUDE_PLUGIN_ROOT
+
+    def test_eject_vendors_the_dashboard_builder_when_the_workflow_exists(self):
+        import os
+        import subprocess
+        self.proj2 = self.root / "proj2"
+        self.proj2.mkdir()
+        ini.main(["--profile", "minimal", "--project", "demo", "--repo", "a/b", "--owner", "alice", "--engine-sha", OLD,
+                  "--dashboard", "--target", str(self.proj2), "--plugin-root", str(ROOT)])
+        wf = self.proj2 / ".github/workflows/laneguard-dashboard.yml"
+        self.assertIn("laneguard-engine", wf.read_text())
+        rc = ej.main(["--engine-sha", OLD, "--target", str(self.proj2), "--apply", "--json"])
+        self.assertEqual(rc, 0)
+        text = wf.read_text()
+        self.assertNotIn("laneguard-engine", text)
+        self.assertNotIn("steps.pin", text)
+        self.assertIn("python3 .laneguard/dashboard/build.py", text)
+        for name in ("build.py", "template.html"):
+            self.assertEqual((self.proj2 / ".laneguard/dashboard" / name).read_text(), (ROOT / "dashboard" / name).read_text())
+        manifest = (self.proj2 / ".laneguard/scaffold.version").read_text()
+        self.assertIn(".laneguard/dashboard/build.py:", manifest)
+        self.assertIn(".github/workflows/laneguard-dashboard.yml:", manifest)
+        # the vendored builder runs from its new home: it finds ../guard for laneconfig and history
+        out = self.proj2 / "site" / "index.html"
+        p = subprocess.run([sys.executable, str(self.proj2 / ".laneguard/dashboard/build.py"), "--runs", "nope.jsonl",
+                            "--config", str(self.proj2 / ".laneguard/config.yaml"), "--out", str(out)],
+                           capture_output=True, text=True, cwd=str(self.proj2), env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("demo", out.read_text())
+        self.assertEqual([c.detail for c in dr.Doctor(str(self.proj2), offline=True).run() if c.status == dr.FAIL], [])
+        # a project without the dashboard workflow gets no dashboard files
+        self.assertFalse((self.proj / ".laneguard/dashboard").exists())
+        ej.main(["--engine-sha", OLD, "--target", str(self.proj), "--apply"])
+        self.assertFalse((self.proj / ".laneguard/dashboard").exists())
+        self.assertFalse((self.proj / ".github/workflows/laneguard-dashboard.yml").exists())
+
     def test_settings_json_is_not_replaced_by_eject(self):
         before = (self.proj / ".claude/settings.json").read_text()
         ej.main(["--engine-sha", OLD, "--target", str(self.proj), "--apply"])

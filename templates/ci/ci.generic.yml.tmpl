@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@{{CHECKOUT_SHA}}
+        with:
+          persist-credentials: false
       - name: lint
         run: {{VALIDATION_LINT_OR_TRUE}}
       - name: test
